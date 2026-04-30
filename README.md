@@ -7,12 +7,8 @@
 
 This is a fork of [skyrim-multiplayer/skymp](https://github.com/skyrim-multiplayer/skymp).
 
-The only modification made relative to upstream is in `skyrim-platform/src/tilted/ui/MyChromiumApp.cpp`:
-a set of CEF command-line flags that allow `getUserMedia()` (microphone access) to work inside the
-Chromium overlay without prompting the user, enabling the in-game voice chat (LiveKit integration).
-
-The branch `hdn/build-skyrim-platform` contains this change along with the GitHub Actions workflow
-used to build and publish `SkyrimPlatform.dll` as a GitHub Release.
+The branch `hdn/build-skyrim-platform` contains minor build adjustments and the GitHub Actions
+workflow used to compile and publish `SkyrimPlatform.dll` as a GitHub Release.
 
 ## What this repo does NOT contain
 
