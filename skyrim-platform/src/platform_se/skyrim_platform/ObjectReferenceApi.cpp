@@ -35,26 +35,23 @@ RE::TESObjectREFR* GetArgObjectReference(const Napi::Value& arg)
 
 void QueueCharacterControllerCollision(RE::FormID formId, bool enabled)
 {
-  g_nativeCallRequirements.gameThrQ->AddTask(
-    [formId, enabled](Viet::Void) {
-      auto actor = RE::TESForm::LookupByID<RE::Actor>(formId);
-      auto controller = actor ? actor->GetCharController() : nullptr;
-      if (!controller) {
-        return;
-      }
+  g_nativeCallRequirements.gameThrQ->AddTask([formId, enabled](Viet::Void) {
+    auto actor = RE::TESForm::LookupByID<RE::Actor>(formId);
+    auto controller = actor ? actor->GetCharController() : nullptr;
+    if (!controller) {
+      return;
+    }
 
-      if (enabled) {
-        controller->flags.reset(
-          RE::CHARACTER_FLAGS::kNoCharacterCollisions);
-      } else {
-        controller->flags.set(
-          RE::CHARACTER_FLAGS::kNoCharacterCollisions);
-      }
-    });
+    if (enabled) {
+      controller->flags.reset(RE::CHARACTER_FLAGS::kNoCharacterCollisions);
+    } else {
+      controller->flags.set(RE::CHARACTER_FLAGS::kNoCharacterCollisions);
+    }
+  });
 }
 
-void QueueObjectReferenceTransform(
-  RE::FormID formId, const ObjectReferenceTransform& transform)
+void QueueObjectReferenceTransform(RE::FormID formId,
+                                   const ObjectReferenceTransform& transform)
 {
   bool mustSchedule = false;
   {
@@ -88,16 +85,17 @@ void QueueObjectReferenceTransform(
     const auto actor = RE::TESForm::LookupByID<RE::Actor>(formId);
     const auto controllerBefore = actor ? actor->GetCharController() : nullptr;
     const bool hadNoCharacterCollisions = controllerBefore &&
-      controllerBefore->flags.any(
-        RE::CHARACTER_FLAGS::kNoCharacterCollisions);
+      controllerBefore->flags.any(RE::CHARACTER_FLAGS::kNoCharacterCollisions);
 
     // TESObjectREFR stores radians. Setting the rotation before SetPosition
-    // makes CommonLib's MoveTo_Impl apply both parts as one game-thread update.
+    // makes CommonLib's MoveTo_Impl apply both parts as one game-thread
+    // update.
     refr->data.angle = latest.rotationRadians;
     refr->SetPosition(latest.position);
 
-    // MoveTo_Impl is allowed to rebuild the live character controller. Preserve
-    // the bilateral mounted-pair filter across that rebuild in the same task.
+    // MoveTo_Impl is allowed to rebuild the live character controller.
+    // Preserve the bilateral mounted-pair filter across that rebuild in the
+    // same task.
     if (hadNoCharacterCollisions && actor) {
       const auto controllerAfter = actor->GetCharController();
       if (controllerAfter) {
@@ -122,8 +120,7 @@ float ExtractFiniteFloat(const Napi::Value& value, const char* name)
 Napi::Value ObjectReferenceApi::SetCollision(const Napi::CallbackInfo& info)
 {
   auto refr = GetArgObjectReference(info[0]);
-  const auto enabled =
-    NapiHelper::ExtractBoolean(info[1], "collision");
+  const auto enabled = NapiHelper::ExtractBoolean(info[1], "collision");
   const auto formId = refr->GetFormID();
 
   // Keep the persistent reference flag used when a 3D is created. Actors
@@ -138,8 +135,7 @@ Napi::Value ObjectReferenceApi::SetCharacterControllerCollision(
   const Napi::CallbackInfo& info)
 {
   const auto refr = GetArgObjectReference(info[0]);
-  const auto enabled =
-    NapiHelper::ExtractBoolean(info[1], "collision");
+  const auto enabled = NapiHelper::ExtractBoolean(info[1], "collision");
   QueueCharacterControllerCollision(refr->GetFormID(), enabled);
   return info.Env().Undefined();
 }
@@ -148,8 +144,7 @@ Napi::Value ObjectReferenceApi::SetObjectReferenceTransform(
   const Napi::CallbackInfo& info)
 {
   const auto refr = GetArgObjectReference(info[0]);
-  constexpr float kDegreesToRadians =
-    3.14159265358979323846f / 180.0f;
+  constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
   const ObjectReferenceTransform transform{
     .position = {
       ExtractFiniteFloat(info[1], "positionX"),
