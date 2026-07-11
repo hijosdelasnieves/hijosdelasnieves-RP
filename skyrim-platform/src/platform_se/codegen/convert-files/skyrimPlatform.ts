@@ -1628,6 +1628,8 @@ export declare function getAnimationVariablesFromActor(actorFormId: number): Act
 export declare function applyAnimationVariablesToActor(actorFormId: number, animationVariables: ActorAnimationVariables): boolean;
 
 export declare function setCollision(refrFormId: number, collision: boolean): void;
+export declare function setCharacterControllerCollision(actorFormId: number, collision: boolean): void;
+export declare function setObjectReferenceTransform(refrFormId: number, positionX: number, positionY: number, positionZ: number, angleX: number, angleY: number, angleZ: number): void;
 
 // Based on Form.pex
 export declare class Form extends PapyrusObject {
