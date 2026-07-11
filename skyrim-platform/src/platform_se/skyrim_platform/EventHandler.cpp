@@ -2,6 +2,7 @@
 #include "EventManager.h"
 #include "EventsApi.h"
 #include "JsUtils.h"
+#include "ObjectReferenceApi.h"
 #include "SkyrimPlatform.h"
 #include "TickHandler.h"
 
@@ -72,12 +73,18 @@ void EventHandler::HandleSKSEMessage(SKSE::MessagingInterface::Message* msg)
       SendSimpleEventOnTick("skyrimLoaded");
     } break;
     case SKSE::MessagingInterface::kNewGame:
+      ObjectReferenceApi::ClearCharacterControllerCollisionProfiles();
+      ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles();
       SendSimpleEventOnTick("newGame");
       break;
     case SKSE::MessagingInterface::kPreLoadGame:
+      ObjectReferenceApi::ClearCharacterControllerCollisionProfiles();
+      ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles();
       SendSimpleEventOnTick("preLoadGame");
       break;
     case SKSE::MessagingInterface::kPostLoadGame:
+      ObjectReferenceApi::ClearCharacterControllerCollisionProfiles();
+      ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles();
       SendSimpleEventOnTick("postLoadGame");
       break;
     case SKSE::MessagingInterface::kSaveGame:
