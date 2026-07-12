@@ -1628,3 +1628,5 @@ export declare function setCharacterControllerCollision(actorFormId: number, col
 export declare function setCharacterControllerCollisionProfile(actorFormId: number, profile: number, lease?: number): void;
 export declare function getCharacterControllerCollisionProfileState(actorFormId: number): number;
 export declare function setObjectReferenceTransform(refrFormId: number, positionX: number, positionY: number, positionZ: number, angleX: number, angleY: number, angleZ: number): void;
+export declare function setMountedPairKinematicTransform(horseFormId: number, riderFormId: number, lease: number, serial: number, positionX: number, positionY: number, positionZ: number, angleX: number, angleY: number, angleZ: number, riderSeatHeight: number): boolean;
+export declare function releaseMountedPairKinematicTransform(horseFormId: number, riderFormId: number, lease: number): void;

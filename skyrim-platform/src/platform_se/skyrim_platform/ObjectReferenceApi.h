@@ -11,6 +11,9 @@ Napi::Value SetCharacterControllerCollisionProfile(
 Napi::Value GetCharacterControllerCollisionProfileState(
   const Napi::CallbackInfo& info);
 Napi::Value SetObjectReferenceTransform(const Napi::CallbackInfo& info);
+Napi::Value SetMountedPairKinematicTransform(const Napi::CallbackInfo& info);
+Napi::Value ReleaseMountedPairKinematicTransform(
+  const Napi::CallbackInfo& info);
 void MaintainCharacterControllerCollisionProfiles();
 void ClearCharacterControllerCollisionProfiles();
 void QueueClearCharacterControllerCollisionProfiles();
@@ -37,5 +40,13 @@ inline void Register(Napi::Env env, Napi::Object& exports)
     "setObjectReferenceTransform",
     Napi::Function::New(
       env, NapiHelper::WrapCppExceptions(SetObjectReferenceTransform)));
+  exports.Set(
+    "setMountedPairKinematicTransform",
+    Napi::Function::New(
+      env, NapiHelper::WrapCppExceptions(SetMountedPairKinematicTransform)));
+  exports.Set("releaseMountedPairKinematicTransform",
+              Napi::Function::New(env,
+                                  NapiHelper::WrapCppExceptions(
+                                    ReleaseMountedPairKinematicTransform)));
 }
 }

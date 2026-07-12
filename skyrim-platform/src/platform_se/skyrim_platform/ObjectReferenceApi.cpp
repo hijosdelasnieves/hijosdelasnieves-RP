@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -40,9 +41,34 @@ struct ObjectReferenceTransform
   RE::NiPoint3 rotationRadians;
 };
 
+struct MountedPairKinematicTransform
+{
+  RE::FormID horseFormId = 0;
+  RE::FormID riderFormId = 0;
+  std::uint32_t lease = 0;
+  std::uint32_t serial = 0;
+  ObjectReferenceTransform horse;
+  float riderSeatHeight = 0.f;
+};
+
+struct MountedPairKinematicState
+{
+  RE::FormID horseFormId = 0;
+  std::uint32_t lease = 0;
+  std::uint32_t lastSerial = 0;
+  std::uint32_t horseHandle = 0;
+  std::uint32_t riderHandle = 0;
+  bool scheduled = false;
+  bool revoked = false;
+  std::optional<MountedPairKinematicTransform> pending;
+};
+
 std::mutex g_transformMutex;
 std::unordered_map<RE::FormID, ObjectReferenceTransform> g_pendingTransforms;
 std::unordered_set<RE::FormID> g_scheduledTransforms;
+std::mutex g_mountedPairKinematicMutex;
+std::unordered_map<RE::FormID, MountedPairKinematicState>
+  g_mountedPairKinematicByRider;
 
 // Profile mutations and maintenance run exclusively on the game thread. The
 // small status cache is the only cross-thread state: JavaScript reads it for
@@ -59,6 +85,12 @@ constexpr std::uint32_t kProfileStateNoCharacterCollisions = 1u << 2;
 constexpr std::uint32_t kProfileStateNotPushablePermanent = 1u << 3;
 constexpr std::uint32_t kProfileStatePossiblePathObstacle = 1u << 4;
 constexpr std::uint32_t kProfileStateNotPushable = 1u << 5;
+
+bool IsNewerUint32(std::uint32_t candidate, std::uint32_t previous)
+{
+  const auto delta = candidate - previous;
+  return delta != 0 && delta < 0x80000000u;
+}
 
 void ApplyCharacterControllerCollision(RE::FormID formId, bool enabled)
 {
@@ -318,6 +350,227 @@ void ClearCharacterControllerCollisionProfiles()
   g_characterControllerCollisionState.clear();
 }
 
+void MaintainProfileAfterKinematicWrite(RE::FormID formId,
+                                        bool hadNoCharacterCollisions)
+{
+  if (g_characterControllerCollisionOverrides.contains(formId)) {
+    MaintainCharacterControllerCollisionOverride(formId);
+    return;
+  }
+
+  if (hadNoCharacterCollisions) {
+    const auto actor = RE::TESForm::LookupByID<RE::Actor>(formId);
+    const auto controller = actor ? actor->GetCharController() : nullptr;
+    if (controller) {
+      controller->flags.set(RE::CHARACTER_FLAGS::kNoCharacterCollisions);
+    }
+  }
+}
+
+bool ApplyActorKinematicTransform(RE::Actor& actor,
+                                  const ObjectReferenceTransform& transform)
+{
+  const auto controllerBefore = actor.GetCharController();
+  if (!controllerBefore) {
+    return false;
+  }
+  const bool hadCollisionProfile =
+    g_characterControllerCollisionOverrides.contains(actor.GetFormID());
+  const bool hadNoCharacterCollisions = controllerBefore &&
+    controllerBefore->flags.any(RE::CHARACTER_FLAGS::kNoCharacterCollisions);
+
+  // This actor-specific virtual deliberately avoids
+  // TESObjectREFR::SetPosition, whose implementation is MoveTo_Impl. Updating
+  // the existing actor controller keeps Havok and the visual transform on the
+  // same pose.
+  actor.data.angle = transform.rotationRadians;
+  actor.SetPosition(transform.position, true);
+  actor.SetRotationX(transform.rotationRadians.x);
+  actor.SetRotationZ(transform.rotationRadians.z);
+  const auto controllerAfter = actor.GetCharController();
+  if (!controllerAfter || controllerAfter != controllerBefore) {
+    return false;
+  }
+  MaintainProfileAfterKinematicWrite(actor.GetFormID(),
+                                     hadNoCharacterCollisions);
+  const auto controllerFinal = actor.GetCharController();
+  if (!controllerFinal || controllerFinal != controllerBefore) {
+    return false;
+  }
+  if (hadCollisionProfile) {
+    const auto profile =
+      g_characterControllerCollisionOverrides.find(actor.GetFormID());
+    if (profile == g_characterControllerCollisionOverrides.end() ||
+        !controllerFinal->flags.any(
+          RE::CHARACTER_FLAGS::kNoCharacterCollisions) ||
+        !controllerFinal->flags.any(RE::CHARACTER_FLAGS::kNotPushable) ||
+        !controllerFinal->flags.any(
+          RE::CHARACTER_FLAGS::kNotPushablePermanent) ||
+        (profile->second.profile ==
+           CharacterControllerCollisionProfile::kRemoteProxy &&
+         controllerFinal->flags.any(
+           RE::CHARACTER_FLAGS::kPossiblePathObstacle))) {
+      return false;
+    }
+  } else if (hadNoCharacterCollisions &&
+             !controllerFinal->flags.any(
+               RE::CHARACTER_FLAGS::kNoCharacterCollisions)) {
+    return false;
+  }
+  return true;
+}
+
+// Caller holds g_mountedPairKinematicMutex through validation and both actor
+// writes. Consequently release/new-lease calls cannot return and then be
+// followed by a stale transform from this task.
+bool BindAndValidateMountedPairHandlesLocked(
+  const MountedPairKinematicTransform& transform, const RE::Actor& horse,
+  const RE::Actor& rider)
+{
+  const auto horseHandle = horse.GetHandle().native_handle();
+  const auto riderHandle = rider.GetHandle().native_handle();
+  if (!horseHandle || !riderHandle) {
+    return false;
+  }
+
+  const auto it = g_mountedPairKinematicByRider.find(transform.riderFormId);
+  if (it == g_mountedPairKinematicByRider.end() ||
+      it->second.horseFormId != transform.horseFormId ||
+      it->second.lease != transform.lease ||
+      it->second.lastSerial != transform.serial) {
+    return false;
+  }
+  auto& state = it->second;
+  if (!state.horseHandle && !state.riderHandle) {
+    state.horseHandle = horseHandle;
+    state.riderHandle = riderHandle;
+    return true;
+  }
+  if (state.horseHandle == horseHandle && state.riderHandle == riderHandle) {
+    return true;
+  }
+
+  // A dynamic FormID was reused while an old JS view still had a queued job.
+  // Drop the native lease instead of moving the new actors with stale state.
+  state.pending.reset();
+  state.revoked = true;
+  return false;
+}
+
+bool QueueMountedPairKinematicTransform(
+  const MountedPairKinematicTransform& transform)
+{
+  bool mustSchedule = false;
+  {
+    std::lock_guard lock(g_mountedPairKinematicMutex);
+    auto& state = g_mountedPairKinematicByRider[transform.riderFormId];
+    if (state.lease && state.lease != transform.lease &&
+        !IsNewerUint32(transform.lease, state.lease)) {
+      return false;
+    }
+    if (state.lease == transform.lease && state.revoked) {
+      return false;
+    }
+    if (state.lease == transform.lease && state.horseFormId &&
+        state.horseFormId != transform.horseFormId) {
+      return false;
+    }
+    if (state.lease == transform.lease &&
+        !IsNewerUint32(transform.serial, state.lastSerial)) {
+      return false;
+    }
+    if (state.lease != transform.lease) {
+      state = MountedPairKinematicState{};
+      state.lease = transform.lease;
+    }
+    state.horseFormId = transform.horseFormId;
+    state.lastSerial = transform.serial;
+    state.pending = transform;
+    mustSchedule = !state.scheduled;
+    state.scheduled = true;
+  }
+  if (!mustSchedule) {
+    return true;
+  }
+
+  const auto riderFormId = transform.riderFormId;
+  g_nativeCallRequirements.gameThrQ->AddTask([riderFormId](Viet::Void) {
+    std::optional<MountedPairKinematicTransform> latest;
+    {
+      std::lock_guard lock(g_mountedPairKinematicMutex);
+      const auto it = g_mountedPairKinematicByRider.find(riderFormId);
+      if (it == g_mountedPairKinematicByRider.end()) {
+        return;
+      }
+      latest = it->second.pending;
+      it->second.pending.reset();
+      it->second.scheduled = false;
+    }
+    if (!latest) {
+      return;
+    }
+
+    // Resolve all Skyrim objects on the game thread and retain no raw pointer
+    // across tasks. Both actors must be ready before either one is moved.
+    const auto horse = RE::TESForm::LookupByID<RE::Actor>(latest->horseFormId);
+    const auto rider = RE::TESForm::LookupByID<RE::Actor>(latest->riderFormId);
+    if (!horse || !rider || !horse->Get3D() || !rider->Get3D() ||
+        !horse->GetCharController() || !rider->GetCharController()) {
+      return;
+    }
+
+    std::lock_guard pairLock(g_mountedPairKinematicMutex);
+    if (!BindAndValidateMountedPairHandlesLocked(*latest, *horse, *rider)) {
+      return;
+    }
+    auto riderTransform = latest->horse;
+    riderTransform.position.z += latest->riderSeatHeight;
+    const bool horseApplied =
+      ApplyActorKinematicTransform(*horse, latest->horse);
+    const bool riderApplied =
+      ApplyActorKinematicTransform(*rider, riderTransform);
+    if (!horseApplied || !riderApplied) {
+      // Form IDs may still resolve while Skyrim is rebuilding a character
+      // controller. Never let this lease keep writing into that transition.
+      const auto state =
+        g_mountedPairKinematicByRider.find(latest->riderFormId);
+      if (state != g_mountedPairKinematicByRider.end() &&
+          state->second.horseFormId == latest->horseFormId &&
+          state->second.lease == latest->lease) {
+        state->second.pending.reset();
+        state->second.revoked = true;
+      }
+    }
+  });
+  return true;
+}
+
+void ReleaseMountedPairKinematicTransform(RE::FormID horseFormId,
+                                          RE::FormID riderFormId,
+                                          std::uint32_t lease)
+{
+  std::lock_guard lock(g_mountedPairKinematicMutex);
+  const auto it = g_mountedPairKinematicByRider.find(riderFormId);
+  if (it != g_mountedPairKinematicByRider.end() &&
+      it->second.horseFormId == horseFormId && it->second.lease == lease) {
+    // A revoked lease remains as a tombstone so the same JS FormView cannot
+    // immediately reacquire it after a controller/identity violation. A newer
+    // lease (new view/session) can supersede it through modular ordering.
+    if (it->second.revoked) {
+      it->second.pending.reset();
+      it->second.scheduled = false;
+    } else {
+      g_mountedPairKinematicByRider.erase(it);
+    }
+  }
+}
+
+void ClearMountedPairKinematicTransforms()
+{
+  std::lock_guard lock(g_mountedPairKinematicMutex);
+  g_mountedPairKinematicByRider.clear();
+}
+
 void QueueObjectReferenceTransform(RE::FormID formId,
                                    const ObjectReferenceTransform& transform)
 {
@@ -469,6 +722,54 @@ Napi::Value ObjectReferenceApi::SetObjectReferenceTransform(
   return info.Env().Undefined();
 }
 
+Napi::Value ObjectReferenceApi::SetMountedPairKinematicTransform(
+  const Napi::CallbackInfo& info)
+{
+  const auto horseFormId = NapiHelper::ExtractUInt32(info[0], "horseFormId");
+  const auto riderFormId = NapiHelper::ExtractUInt32(info[1], "riderFormId");
+  const auto lease = NapiHelper::ExtractUInt32(info[2], "lease");
+  const auto serial = NapiHelper::ExtractUInt32(info[3], "serial");
+  if (!horseFormId || !riderFormId || horseFormId == riderFormId ||
+      riderFormId == 0x14 || !lease || !serial) {
+    return Napi::Boolean::New(info.Env(), false);
+  }
+
+  constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
+  const MountedPairKinematicTransform transform{
+    .horseFormId = horseFormId,
+    .riderFormId = riderFormId,
+    .lease = lease,
+    .serial = serial,
+    .horse = {
+      .position = {
+        ExtractFiniteFloat(info[4], "positionX"),
+        ExtractFiniteFloat(info[5], "positionY"),
+        ExtractFiniteFloat(info[6], "positionZ"),
+      },
+      .rotationRadians = {
+        ExtractFiniteFloat(info[7], "angleX") * kDegreesToRadians,
+        ExtractFiniteFloat(info[8], "angleY") * kDegreesToRadians,
+        ExtractFiniteFloat(info[9], "angleZ") * kDegreesToRadians,
+      },
+    },
+    .riderSeatHeight = ExtractFiniteFloat(info[10], "riderSeatHeight"),
+  };
+  return Napi::Boolean::New(info.Env(),
+                            QueueMountedPairKinematicTransform(transform));
+}
+
+Napi::Value ObjectReferenceApi::ReleaseMountedPairKinematicTransform(
+  const Napi::CallbackInfo& info)
+{
+  const auto horseFormId = NapiHelper::ExtractUInt32(info[0], "horseFormId");
+  const auto riderFormId = NapiHelper::ExtractUInt32(info[1], "riderFormId");
+  const auto lease = NapiHelper::ExtractUInt32(info[2], "lease");
+  if (horseFormId && riderFormId && lease) {
+    ReleaseMountedPairKinematicTransform(horseFormId, riderFormId, lease);
+  }
+  return info.Env().Undefined();
+}
+
 void ObjectReferenceApi::MaintainCharacterControllerCollisionProfiles()
 {
   auto it = g_characterControllerCollisionOverrides.begin();
@@ -486,10 +787,13 @@ void ObjectReferenceApi::MaintainCharacterControllerCollisionProfiles()
 void ObjectReferenceApi::ClearCharacterControllerCollisionProfiles()
 {
   ::ClearCharacterControllerCollisionProfiles();
+  ClearMountedPairKinematicTransforms();
 }
 
 void ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles()
 {
-  g_nativeCallRequirements.gameThrQ->AddTask(
-    [](Viet::Void) { ::ClearCharacterControllerCollisionProfiles(); });
+  g_nativeCallRequirements.gameThrQ->AddTask([](Viet::Void) {
+    ::ClearCharacterControllerCollisionProfiles();
+    ClearMountedPairKinematicTransforms();
+  });
 }
