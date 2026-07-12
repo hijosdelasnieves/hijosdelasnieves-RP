@@ -424,8 +424,8 @@ bool ApplyActorKinematicTransform(RE::Actor& actor,
 // writes. Consequently release/new-lease calls cannot return and then be
 // followed by a stale transform from this task.
 bool BindAndValidateMountedPairHandlesLocked(
-  const MountedPairKinematicTransform& transform, const RE::Actor& horse,
-  const RE::Actor& rider)
+  const MountedPairKinematicTransform& transform, RE::Actor& horse,
+  RE::Actor& rider)
 {
   const auto horseHandle = horse.GetHandle().native_handle();
   const auto riderHandle = rider.GetHandle().native_handle();
@@ -545,9 +545,9 @@ bool QueueMountedPairKinematicTransform(
   return true;
 }
 
-void ReleaseMountedPairKinematicTransform(RE::FormID horseFormId,
-                                          RE::FormID riderFormId,
-                                          std::uint32_t lease)
+void ReleaseMountedPairKinematicLease(RE::FormID horseFormId,
+                                      RE::FormID riderFormId,
+                                      std::uint32_t lease)
 {
   std::lock_guard lock(g_mountedPairKinematicMutex);
   const auto it = g_mountedPairKinematicByRider.find(riderFormId);
@@ -765,7 +765,7 @@ Napi::Value ObjectReferenceApi::ReleaseMountedPairKinematicTransform(
   const auto riderFormId = NapiHelper::ExtractUInt32(info[1], "riderFormId");
   const auto lease = NapiHelper::ExtractUInt32(info[2], "lease");
   if (horseFormId && riderFormId && lease) {
-    ReleaseMountedPairKinematicTransform(horseFormId, riderFormId, lease);
+    ReleaseMountedPairKinematicLease(horseFormId, riderFormId, lease);
   }
   return info.Env().Undefined();
 }
