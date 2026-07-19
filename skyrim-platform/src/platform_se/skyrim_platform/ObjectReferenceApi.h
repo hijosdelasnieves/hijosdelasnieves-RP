@@ -15,8 +15,7 @@ Napi::Value SetMountedPairKinematicTransform(const Napi::CallbackInfo& info);
 Napi::Value ReleaseMountedPairKinematicTransform(
   const Napi::CallbackInfo& info);
 void MaintainCharacterControllerCollisionProfiles();
-void ClearCharacterControllerCollisionProfiles();
-void QueueClearCharacterControllerCollisionProfiles();
+void RequestMountStateReset();
 
 inline void Register(Napi::Env env, Napi::Object& exports)
 {

@@ -2,6 +2,7 @@
 
 #include "CallNativeApi.h"
 
+#include <atomic>
 #include <cmath>
 #include <mutex>
 #include <optional>
@@ -69,6 +70,9 @@ std::unordered_set<RE::FormID> g_scheduledTransforms;
 std::mutex g_mountedPairKinematicMutex;
 std::unordered_map<RE::FormID, MountedPairKinematicState>
   g_mountedPairKinematicByRider;
+// SKSE load callbacks may run while Skyrim is rebuilding controllers. They
+// only publish this fence; the game-thread tick performs the actual cleanup.
+std::atomic_bool g_mountStateResetRequested = false;
 
 // Profile mutations and maintenance run exclusively on the game thread. The
 // small status cache is the only cross-thread state: JavaScript reads it for
@@ -495,6 +499,10 @@ bool QueueMountedPairKinematicTransform(
 
   const auto riderFormId = transform.riderFormId;
   g_nativeCallRequirements.gameThrQ->AddTask([riderFormId](Viet::Void) {
+    if (g_mountStateResetRequested.load(std::memory_order_acquire)) {
+      return;
+    }
+
     std::optional<MountedPairKinematicTransform> latest;
     {
       std::lock_guard lock(g_mountedPairKinematicMutex);
@@ -571,6 +579,20 @@ void ClearMountedPairKinematicTransforms()
   g_mountedPairKinematicByRider.clear();
 }
 
+void ClearPendingObjectReferenceTransforms()
+{
+  std::lock_guard lock(g_transformMutex);
+  g_pendingTransforms.clear();
+  g_scheduledTransforms.clear();
+}
+
+void ClearMountState()
+{
+  ClearCharacterControllerCollisionProfiles();
+  ClearMountedPairKinematicTransforms();
+  ClearPendingObjectReferenceTransforms();
+}
+
 void QueueObjectReferenceTransform(RE::FormID formId,
                                    const ObjectReferenceTransform& transform)
 {
@@ -585,6 +607,10 @@ void QueueObjectReferenceTransform(RE::FormID formId,
   }
 
   g_nativeCallRequirements.gameThrQ->AddTask([formId](Viet::Void) {
+    if (g_mountStateResetRequested.load(std::memory_order_acquire)) {
+      return;
+    }
+
     ObjectReferenceTransform latest;
     {
       std::lock_guard lock(g_transformMutex);
@@ -685,6 +711,9 @@ Napi::Value ObjectReferenceApi::SetCharacterControllerCollisionProfile(
     : 0;
   g_nativeCallRequirements.gameThrQ->AddTask(
     [formId, profile, lease](Viet::Void) {
+      if (g_mountStateResetRequested.load(std::memory_order_acquire)) {
+        return;
+      }
       SetCharacterControllerCollisionProfile(formId, profile, lease);
     });
   return info.Env().Undefined();
@@ -772,6 +801,11 @@ Napi::Value ObjectReferenceApi::ReleaseMountedPairKinematicTransform(
 
 void ObjectReferenceApi::MaintainCharacterControllerCollisionProfiles()
 {
+  if (g_mountStateResetRequested.exchange(false, std::memory_order_acq_rel)) {
+    ClearMountState();
+    return;
+  }
+
   auto it = g_characterControllerCollisionOverrides.begin();
   while (it != g_characterControllerCollisionOverrides.end()) {
     if (ApplyCharacterControllerCollisionOverride(it->first, it->second)) {
@@ -784,16 +818,7 @@ void ObjectReferenceApi::MaintainCharacterControllerCollisionProfiles()
   }
 }
 
-void ObjectReferenceApi::ClearCharacterControllerCollisionProfiles()
+void ObjectReferenceApi::RequestMountStateReset()
 {
-  ::ClearCharacterControllerCollisionProfiles();
-  ClearMountedPairKinematicTransforms();
-}
-
-void ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles()
-{
-  g_nativeCallRequirements.gameThrQ->AddTask([](Viet::Void) {
-    ::ClearCharacterControllerCollisionProfiles();
-    ClearMountedPairKinematicTransforms();
-  });
+  g_mountStateResetRequested.store(true, std::memory_order_release);
 }
