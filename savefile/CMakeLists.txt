@@ -12,3 +12,13 @@ apply_default_settings(TARGETS savefile)
 
 find_package(ZLIB REQUIRED)
 target_link_libraries(savefile PUBLIC ZLIB::ZLIB)
+
+if(BUILD_UNIT_TESTS AND NOT EMSCRIPTEN)
+  add_executable(savefile_refid_test tests/RefIdTest.cpp)
+  target_link_libraries(savefile_refid_test PRIVATE savefile)
+  target_compile_definitions(savefile_refid_test PRIVATE
+    SKYMP_TEMPLATE_SAVE_PATH="${CMAKE_SOURCE_DIR}/skyrim-platform/src/platform_se/skyrim_platform/assets/template.ess"
+  )
+  apply_default_settings(TARGETS savefile_refid_test)
+  add_test(NAME test_savefile_refid COMMAND savefile_refid_test)
+endif()
