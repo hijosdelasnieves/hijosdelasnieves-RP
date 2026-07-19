@@ -50,6 +50,7 @@ struct MountedPairKinematicTransform
   std::uint32_t serial = 0;
   ObjectReferenceTransform horse;
   float riderSeatHeight = 0.f;
+  bool writeRider = true;
 };
 
 struct MountedPairKinematicState
@@ -522,8 +523,9 @@ bool QueueMountedPairKinematicTransform(
     // across tasks. Both actors must be ready before either one is moved.
     const auto horse = RE::TESForm::LookupByID<RE::Actor>(latest->horseFormId);
     const auto rider = RE::TESForm::LookupByID<RE::Actor>(latest->riderFormId);
-    if (!horse || !rider || !horse->Get3D() || !rider->Get3D() ||
-        !horse->GetCharController() || !rider->GetCharController()) {
+    if (!horse || !rider || !horse->Get3D() || !horse->GetCharController() ||
+        (latest->writeRider &&
+         (!rider->Get3D() || !rider->GetCharController()))) {
       return;
     }
 
@@ -531,12 +533,14 @@ bool QueueMountedPairKinematicTransform(
     if (!BindAndValidateMountedPairHandlesLocked(*latest, *horse, *rider)) {
       return;
     }
-    auto riderTransform = latest->horse;
-    riderTransform.position.z += latest->riderSeatHeight;
     const bool horseApplied =
       ApplyActorKinematicTransform(*horse, latest->horse);
-    const bool riderApplied =
-      ApplyActorKinematicTransform(*rider, riderTransform);
+    bool riderApplied = true;
+    if (latest->writeRider) {
+      auto riderTransform = latest->horse;
+      riderTransform.position.z += latest->riderSeatHeight;
+      riderApplied = ApplyActorKinematicTransform(*rider, riderTransform);
+    }
     if (!horseApplied || !riderApplied) {
       // Form IDs may still resolve while Skyrim is rebuilding a character
       // controller. Never let this lease keep writing into that transition.
@@ -782,6 +786,44 @@ Napi::Value ObjectReferenceApi::SetMountedPairKinematicTransform(
       },
     },
     .riderSeatHeight = ExtractFiniteFloat(info[10], "riderSeatHeight"),
+    .writeRider = true,
+  };
+  return Napi::Boolean::New(info.Env(),
+                            QueueMountedPairKinematicTransform(transform));
+}
+
+Napi::Value ObjectReferenceApi::SetMountedHorseKinematicTransform(
+  const Napi::CallbackInfo& info)
+{
+  const auto horseFormId = NapiHelper::ExtractUInt32(info[0], "horseFormId");
+  const auto riderFormId = NapiHelper::ExtractUInt32(info[1], "riderFormId");
+  const auto lease = NapiHelper::ExtractUInt32(info[2], "lease");
+  const auto serial = NapiHelper::ExtractUInt32(info[3], "serial");
+  if (!horseFormId || !riderFormId || horseFormId == riderFormId ||
+      riderFormId == 0x14 || !lease || !serial) {
+    return Napi::Boolean::New(info.Env(), false);
+  }
+
+  constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
+  const MountedPairKinematicTransform transform{
+    .horseFormId = horseFormId,
+    .riderFormId = riderFormId,
+    .lease = lease,
+    .serial = serial,
+    .horse = {
+      .position = {
+        ExtractFiniteFloat(info[4], "positionX"),
+        ExtractFiniteFloat(info[5], "positionY"),
+        ExtractFiniteFloat(info[6], "positionZ"),
+      },
+      .rotationRadians = {
+        ExtractFiniteFloat(info[7], "angleX") * kDegreesToRadians,
+        ExtractFiniteFloat(info[8], "angleY") * kDegreesToRadians,
+        ExtractFiniteFloat(info[9], "angleZ") * kDegreesToRadians,
+      },
+    },
+    .riderSeatHeight = 0.f,
+    .writeRider = false,
   };
   return Napi::Boolean::New(info.Env(),
                             QueueMountedPairKinematicTransform(transform));
