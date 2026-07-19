@@ -1,6 +1,6 @@
 #include "savefile/SFStructure.h"
 
-#include <cstring>
+#include <algorithm>
 #include <stdexcept>
 
 SaveFile_::RefID SaveFile_::RefID::CreateRefId(SaveFile& parentSaveFile,
@@ -8,30 +8,49 @@ SaveFile_::RefID SaveFile_::RefID::CreateRefId(SaveFile& parentSaveFile,
 {
   RefID res;
 
-  const auto countWas = parentSaveFile.formIDArrayCount;
-  const size_t n = countWas + 1;
-  uint32_t* newFormIDArray = new uint32_t[n];
+  if (static_cast<size_t>(parentSaveFile.formIDArrayCount) !=
+      parentSaveFile.formIDArray.size()) {
+    throw std::runtime_error("formIDArray count does not match its data");
+  }
 
-  memcpy(newFormIDArray, parentSaveFile.formIDArray.data(), countWas);
-  newFormIDArray[countWas] = formId;
+  const auto existing = std::find(parentSaveFile.formIDArray.begin(),
+                                  parentSaveFile.formIDArray.end(), formId);
+  size_t index = 0;
+  if (existing != parentSaveFile.formIDArray.end()) {
+    index = static_cast<size_t>(
+              std::distance(parentSaveFile.formIDArray.begin(), existing)) +
+      1;
+  } else {
+    index = parentSaveFile.formIDArray.size() + 1;
+    if (index >= 65536) {
+      throw std::runtime_error("too many elements was in FormIDArray (" +
+                               std::to_string(parentSaveFile.formIDArrayCount) +
+                               ")");
+    }
 
-  parentSaveFile.formIDArray = { newFormIDArray, newFormIDArray + n };
-  parentSaveFile.formIDArrayCount = countWas + 1;
+    // Keep the existing vector intact. The old implementation passed the
+    // element count to memcpy as a byte count, corrupting roughly 75% of the
+    // generated save's FormID array and leaking the temporary allocation.
+    parentSaveFile.formIDArray.push_back(formId);
+    parentSaveFile.formIDArrayCount =
+      static_cast<uint32_t>(parentSaveFile.formIDArray.size());
 
-  // fix offset
-  parentSaveFile.fileLocationTable.unknownTable3Offset += 4;
+    // The appended uint32_t is immediately before unknownTable3.
+    parentSaveFile.fileLocationTable.unknownTable3Offset += sizeof(formId);
+  }
 
   // 255 => 00 00 FF
   // 256 => 00 01 00
-  // 65536 => error
-  const auto index =
-    countWas + 1; // as uesp.net says, formIDArray index starts in 1
-  if (index >= 65536)
+  // 65536 => error (the current savefile implementation uses 16-bit array
+  // indices even though the on-disk RefID has room for more).
+  if (index >= 65536) {
     throw std::runtime_error("too many elements was in FormIDArray (" +
-                             std::to_string(countWas) + ")");
+                             std::to_string(parentSaveFile.formIDArrayCount) +
+                             ")");
+  }
   res.byte0 = 0;
-  res.byte1 = (index / 256) % 256;
-  res.byte2 = index % 256;
+  res.byte1 = static_cast<uint8_t>((index / 256) % 256);
+  res.byte2 = static_cast<uint8_t>(index % 256);
 
   return res;
 }
