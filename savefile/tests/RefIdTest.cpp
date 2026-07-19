@@ -68,9 +68,9 @@ int main()
             "an appended FormID must return its one-based array index");
     Require(save.formIDArray.size() == 5 && save.formIDArrayCount == 5,
             "the FormID array count must track the vector");
-    Require(std::equal(original.begin(), original.end(),
-                       save.formIDArray.begin()),
-            "appending a FormID must preserve every existing uint32_t");
+    Require(
+      std::equal(original.begin(), original.end(), save.formIDArray.begin()),
+      "appending a FormID must preserve every existing uint32_t");
     Require(save.formIDArray.back() == 0x50,
             "the requested FormID must be appended");
     Require(save.fileLocationTable.unknownTable3Offset == 4100,
@@ -112,8 +112,7 @@ int main()
     TemporarySave generated;
     Require(SaveFile_::Writer(templateSave).CreateSaveFile(generated.path),
             "the modified template must be writable");
-    auto reparsed =
-      SaveFile_::Reader(generated.path.string()).GetStructure();
+    auto reparsed = SaveFile_::Reader(generated.path.string()).GetStructure();
     Require(reparsed->formIDArray == templateSave->formIDArray,
             "every FormID must survive a write/read round trip");
     Require(reparsed->formIDArray.back() == whiterunWorld,

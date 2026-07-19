@@ -23,9 +23,9 @@ SaveFile_::RefID SaveFile_::RefID::CreateRefId(SaveFile& parentSaveFile,
   } else {
     index = parentSaveFile.formIDArray.size() + 1;
     if (index >= 65536) {
-      throw std::runtime_error("too many elements was in FormIDArray (" +
-                               std::to_string(parentSaveFile.formIDArrayCount) +
-                               ")");
+      throw std::runtime_error(
+        "too many elements was in FormIDArray (" +
+        std::to_string(parentSaveFile.formIDArrayCount) + ")");
     }
 
     // Keep the existing vector intact. The old implementation passed the
