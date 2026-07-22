@@ -20,6 +20,8 @@ Napi::Value BlockPapyrusEvents(const Napi::CallbackInfo& info);
 
 void DisableCtrlPrtScnHotkey();
 
+void SetHdnMagicMenuBlocked(bool blocked);
+
 using NativeExportsMap =
   std::map<std::string, std::function<Napi::Object(const Napi::Object&)>>;
 
@@ -57,6 +59,16 @@ inline void Register(Napi::Env env, Napi::Object& exports,
   exports.Set(
     "getJsMemoryUsage",
     Napi::Function::New(env, NapiHelper::WrapCppExceptions(GetJsMemoryUsage)));
+  exports.Set(
+    "setHdnMagicMenuBlocked",
+    Napi::Function::New(
+      env,
+      NapiHelper::WrapCppExceptions(
+        [](const Napi::CallbackInfo& info) -> Napi::Value {
+          SetHdnMagicMenuBlocked(
+            NapiHelper::ExtractBoolean(info[0], "blocked"));
+          return info.Env().Undefined();
+        })));
   exports.Set(
     "disableCtrlPrtScnHotkey",
     Napi::Function::New(env,

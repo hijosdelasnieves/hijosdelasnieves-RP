@@ -16,6 +16,7 @@ export declare function getPluginSourceCode(pluginName: string, overrideFolder?:
 export declare function writePlugin(pluginName: string, newSources: string, overrideFolder?: string): string // overrideFolder is relative to Data/Platform
 export declare function getPlatformVersion(): string
 export declare function disableCtrlPrtScnHotkey(): void
+export declare function setHdnMagicMenuBlocked(blocked: boolean): void
 export declare function blockPapyrusEvents(block: boolean): void
 export declare function sendIpcMessage(targetSystemName: string, message: ArrayBuffer): void
 export declare function encodeUtf8(text: string): ArrayBuffer
