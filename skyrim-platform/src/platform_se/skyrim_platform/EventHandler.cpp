@@ -73,18 +73,15 @@ void EventHandler::HandleSKSEMessage(SKSE::MessagingInterface::Message* msg)
       SendSimpleEventOnTick("skyrimLoaded");
     } break;
     case SKSE::MessagingInterface::kNewGame:
-      ObjectReferenceApi::ClearCharacterControllerCollisionProfiles();
-      ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles();
+      ObjectReferenceApi::RequestMountStateReset();
       SendSimpleEventOnTick("newGame");
       break;
     case SKSE::MessagingInterface::kPreLoadGame:
-      ObjectReferenceApi::ClearCharacterControllerCollisionProfiles();
-      ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles();
+      ObjectReferenceApi::RequestMountStateReset();
       SendSimpleEventOnTick("preLoadGame");
       break;
     case SKSE::MessagingInterface::kPostLoadGame:
-      ObjectReferenceApi::ClearCharacterControllerCollisionProfiles();
-      ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles();
+      ObjectReferenceApi::RequestMountStateReset();
       SendSimpleEventOnTick("postLoadGame");
       break;
     case SKSE::MessagingInterface::kSaveGame:

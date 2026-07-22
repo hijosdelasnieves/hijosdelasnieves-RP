@@ -326,7 +326,7 @@ private:
 
   void ClearState()
   {
-    ObjectReferenceApi::QueueClearCharacterControllerCollisionProfiles();
+    ObjectReferenceApi::RequestMountStateReset();
     ConsoleApi::Clear();
     EventsApi::Clear();
     taskQueue.Clear();
