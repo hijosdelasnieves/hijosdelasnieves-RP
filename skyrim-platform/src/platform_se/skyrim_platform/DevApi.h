@@ -61,14 +61,13 @@ inline void Register(Napi::Env env, Napi::Object& exports,
     Napi::Function::New(env, NapiHelper::WrapCppExceptions(GetJsMemoryUsage)));
   exports.Set(
     "setHdnMagicMenuBlocked",
-    Napi::Function::New(
-      env,
-      NapiHelper::WrapCppExceptions(
-        [](const Napi::CallbackInfo& info) -> Napi::Value {
-          SetHdnMagicMenuBlocked(
-            NapiHelper::ExtractBoolean(info[0], "blocked"));
-          return info.Env().Undefined();
-        })));
+    Napi::Function::New(env,
+                        NapiHelper::WrapCppExceptions(
+                          [](const Napi::CallbackInfo& info) -> Napi::Value {
+                            SetHdnMagicMenuBlocked(
+                              NapiHelper::ExtractBoolean(info[0], "blocked"));
+                            return info.Env().Undefined();
+                          })));
   exports.Set(
     "disableCtrlPrtScnHotkey",
     Napi::Function::New(env,

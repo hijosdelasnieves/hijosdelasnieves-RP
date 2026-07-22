@@ -202,8 +202,7 @@ bool IsHdnMagicMenuInput(RE::InputEvent* event)
 
   const auto* userEvent = event->QUserEvent().c_str();
   return userEvent &&
-    (strcmp(userEvent, "Magic") == 0 ||
-     strcmp(userEvent, "Magic Menu") == 0 ||
+    (strcmp(userEvent, "Magic") == 0 || strcmp(userEvent, "Magic Menu") == 0 ||
      strcmp(userEvent, "MagicMenu") == 0);
 }
 
