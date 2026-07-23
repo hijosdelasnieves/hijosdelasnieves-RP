@@ -379,10 +379,10 @@ DX11RenderHandler::SnapshotHdnLoggerNativeBarLocked(
     return result;
   }
 
-  result.elapsedMs = std::max(0.0,
-                              std::chrono::duration<double, std::milli>(
-                                now - s_hdnLoggerNativeBar.startedAt)
-                                .count());
+  result.elapsedMs = (std::max)(0.0,
+                                std::chrono::duration<double, std::milli>(
+                                  now - s_hdnLoggerNativeBar.startedAt)
+                                  .count());
   result.value = s_hdnLoggerNativeBar.running
     ? HdnLoggerBarValue(s_hdnLoggerNativeBar.config.startPhase,
                         result.elapsedMs, s_hdnLoggerNativeBar.config.travelMs)
@@ -487,9 +487,9 @@ void DX11RenderHandler::DrawHdnLoggerNativeBar()
 
   RECT fillRect = borderRect;
   const LONG insetX =
-    std::max<LONG>(1, static_cast<LONG>(std::lround(scaleX)));
+    (std::max<LONG>)(1, static_cast<LONG>(std::lround(scaleX)));
   const LONG insetY =
-    std::max<LONG>(1, static_cast<LONG>(std::lround(scaleY)));
+    (std::max<LONG>)(1, static_cast<LONG>(std::lround(scaleY)));
   fillRect.left += insetX;
   fillRect.right -= insetX;
   fillRect.top += insetY;
