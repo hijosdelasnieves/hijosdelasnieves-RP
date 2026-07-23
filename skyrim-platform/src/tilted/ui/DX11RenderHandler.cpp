@@ -1,4 +1,5 @@
 #include "DInputHook.hpp"
+#include "HdnLoggerNativeBarModel.h"
 #include "TextToDraw.h"
 #include <DX11RenderHandler.h>
 #include <DirectXColors.h>
@@ -6,6 +7,8 @@
 #include <DirectXTK/SimpleMath.h>
 #include <DirectXTK/WICTextureLoader.h>
 #include <OverlayClient.h>
+#include <algorithm>
+#include <cmath>
 #include <cmrc/cmrc.hpp>
 #include <codecvt>
 #include <filesystem>
@@ -18,6 +21,11 @@
 CMRC_DECLARE(skyrim_plugin_resources);
 
 namespace CEFUtils {
+std::mutex DX11RenderHandler::s_hdnLoggerNativeBarLock;
+DX11RenderHandler::HdnLoggerNativeBarState
+  DX11RenderHandler::s_hdnLoggerNativeBar;
+std::atomic_bool DX11RenderHandler::s_hdnLoggerNativeBarRendererReady{ false };
+
 DX11RenderHandler::DX11RenderHandler(Renderer* apRenderer) noexcept
   : m_pRenderer(apRenderer)
 {
@@ -27,7 +35,11 @@ DX11RenderHandler::DX11RenderHandler(Renderer* apRenderer) noexcept
   isCreateLock = true;
 }
 
-DX11RenderHandler::~DX11RenderHandler() = default;
+DX11RenderHandler::~DX11RenderHandler()
+{
+  s_hdnLoggerNativeBarRendererReady.store(false);
+  ClearHdnLoggerNativeBar();
+}
 
 void DX11RenderHandler::Render(
   const ObtainTextsToDrawFunction& obtainTextsToDraw)
@@ -66,6 +78,8 @@ void DX11RenderHandler::Render(
                            DirectX::Colors::White, 0.f);
     }
   }
+
+  DrawHdnLoggerNativeBar();
 
   // obtainTextsToDraw is expected to do nothing if IsVisible is set to false
   // NB: this code is active even if browser backend is nirnlab (for now)
@@ -118,6 +132,9 @@ void DX11RenderHandler::Reset()
 
 void DX11RenderHandler::Create()
 {
+  s_hdnLoggerNativeBarRendererReady.store(false);
+  m_pHdnLoggerBarPixel.Reset();
+
   const auto hr = m_pRenderer->GetSwapChain()->GetDevice(
     IID_ID3D11Device,
     reinterpret_cast<void**>(m_pDevice.ReleaseAndGetAddressOf()));
@@ -140,6 +157,7 @@ void DX11RenderHandler::Create()
     std::make_unique<DirectX::SpriteBatch>(m_pImmediateContext.Get());
 
   m_pStates = std::make_unique<DirectX::CommonStates>(m_pDevice.Get());
+  CreateHdnLoggerBarPixel();
 
   if (FAILED(DirectX::CreateWICTextureFromFile(
         m_pDevice.Get(), m_pParent->GetCursorPathPNG().c_str(), nullptr,
@@ -305,5 +323,180 @@ void DX11RenderHandler::CreateRenderTexture()
         m_pTexture.Get(), &sharedResourceViewDesc,
         m_pTextureView.ReleaseAndGetAddressOf())))
     return;
+}
+
+void DX11RenderHandler::CreateHdnLoggerBarPixel()
+{
+  if (!m_pDevice) {
+    return;
+  }
+
+  constexpr uint32_t whitePixel = 0xffffffff;
+  D3D11_SUBRESOURCE_DATA initialData{};
+  initialData.pSysMem = &whitePixel;
+  initialData.SysMemPitch = sizeof(whitePixel);
+
+  D3D11_TEXTURE2D_DESC desc{};
+  desc.Width = 1;
+  desc.Height = 1;
+  desc.MipLevels = 1;
+  desc.ArraySize = 1;
+  desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  desc.SampleDesc.Count = 1;
+  desc.Usage = D3D11_USAGE_IMMUTABLE;
+  desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelTexture;
+  if (FAILED(m_pDevice->CreateTexture2D(
+        &desc, &initialData, pixelTexture.ReleaseAndGetAddressOf()))) {
+    return;
+  }
+  if (FAILED(m_pDevice->CreateShaderResourceView(
+        pixelTexture.Get(), nullptr,
+        m_pHdnLoggerBarPixel.ReleaseAndGetAddressOf()))) {
+    return;
+  }
+  s_hdnLoggerNativeBarRendererReady.store(true);
+}
+
+bool DX11RenderHandler::IsHdnLoggerNativeBarSupported() noexcept
+{
+  return s_hdnLoggerNativeBarRendererReady.load();
+}
+
+DX11RenderHandler::HdnLoggerNativeBarResult
+DX11RenderHandler::SnapshotHdnLoggerNativeBarLocked(
+  std::chrono::steady_clock::time_point now, bool accepted) noexcept
+{
+  HdnLoggerNativeBarResult result;
+  result.supported = IsHdnLoggerNativeBarSupported();
+  result.active = s_hdnLoggerNativeBar.active;
+  result.running = s_hdnLoggerNativeBar.running;
+  result.accepted = accepted;
+  result.attempt = s_hdnLoggerNativeBar.config.attempt;
+
+  if (!s_hdnLoggerNativeBar.active) {
+    return result;
+  }
+
+  result.elapsedMs = std::max(0.0,
+                              std::chrono::duration<double, std::milli>(
+                                now - s_hdnLoggerNativeBar.startedAt)
+                                .count());
+  result.value = s_hdnLoggerNativeBar.running
+    ? HdnLoggerBarValue(s_hdnLoggerNativeBar.config.startPhase,
+                        result.elapsedMs, s_hdnLoggerNativeBar.config.travelMs)
+    : s_hdnLoggerNativeBar.frozenValue;
+  return result;
+}
+
+DX11RenderHandler::HdnLoggerNativeBarResult
+DX11RenderHandler::StartHdnLoggerNativeBar(
+  const HdnLoggerNativeBarConfig& config) noexcept
+{
+  std::lock_guard<std::mutex> _(s_hdnLoggerNativeBarLock);
+  const auto now = std::chrono::steady_clock::now();
+  if (!IsHdnLoggerNativeBarSupported() ||
+      !IsHdnLoggerBarGeometryValid(
+        config.viewportWidth, config.viewportHeight, config.trackLeft,
+        config.trackTop, config.trackWidth, config.trackHeight,
+        config.barWidth, config.travelMs, config.startPhase) ||
+      config.attempt > 64) {
+    s_hdnLoggerNativeBar = {};
+    return SnapshotHdnLoggerNativeBarLocked(now, false);
+  }
+
+  s_hdnLoggerNativeBar.active = true;
+  s_hdnLoggerNativeBar.running = true;
+  s_hdnLoggerNativeBar.config = config;
+  s_hdnLoggerNativeBar.frozenValue = HdnLoggerPingPong(config.startPhase);
+  s_hdnLoggerNativeBar.startedAt = now;
+  return SnapshotHdnLoggerNativeBarLocked(now, true);
+}
+
+DX11RenderHandler::HdnLoggerNativeBarResult
+DX11RenderHandler::StopHdnLoggerNativeBar(double minimumElapsedMs) noexcept
+{
+  std::lock_guard<std::mutex> _(s_hdnLoggerNativeBarLock);
+  const auto now = std::chrono::steady_clock::now();
+  auto snapshot = SnapshotHdnLoggerNativeBarLocked(now, false);
+  if (!snapshot.supported || !snapshot.active || !snapshot.running ||
+      !std::isfinite(minimumElapsedMs) || minimumElapsedMs < 0.0 ||
+      snapshot.elapsedMs < minimumElapsedMs) {
+    return snapshot;
+  }
+
+  s_hdnLoggerNativeBar.frozenValue = snapshot.value;
+  s_hdnLoggerNativeBar.running = false;
+  return SnapshotHdnLoggerNativeBarLocked(now, true);
+}
+
+void DX11RenderHandler::ClearHdnLoggerNativeBar() noexcept
+{
+  std::lock_guard<std::mutex> _(s_hdnLoggerNativeBarLock);
+  s_hdnLoggerNativeBar = {};
+}
+
+void DX11RenderHandler::DrawHdnLoggerNativeBar()
+{
+  if (!Visible() || !m_pHdnLoggerBarPixel || !m_width || !m_height) {
+    return;
+  }
+
+  HdnLoggerNativeBarConfig config;
+  double value = 0.0;
+  {
+    std::lock_guard<std::mutex> _(s_hdnLoggerNativeBarLock);
+    const auto snapshot = SnapshotHdnLoggerNativeBarLocked(
+      std::chrono::steady_clock::now(), false);
+    if (!snapshot.active) {
+      return;
+    }
+    config = s_hdnLoggerNativeBar.config;
+    value = snapshot.value;
+  }
+
+  const double scaleX = static_cast<double>(m_width) / config.viewportWidth;
+  const double scaleY = static_cast<double>(m_height) / config.viewportHeight;
+  const double centerX =
+    (config.trackLeft + value * config.trackWidth) * scaleX;
+  const double halfBarWidth = config.barWidth * scaleX * 0.5;
+
+  RECT borderRect{ static_cast<LONG>(std::lround(centerX - halfBarWidth)),
+                   static_cast<LONG>(std::lround(config.trackTop * scaleY)),
+                   static_cast<LONG>(std::lround(centerX + halfBarWidth)),
+                   static_cast<LONG>(std::lround(
+                     (config.trackTop + config.trackHeight) * scaleY)) };
+  borderRect.left =
+    std::clamp<LONG>(borderRect.left, 0, static_cast<LONG>(m_width));
+  borderRect.right =
+    std::clamp<LONG>(borderRect.right, 0, static_cast<LONG>(m_width));
+  borderRect.top =
+    std::clamp<LONG>(borderRect.top, 0, static_cast<LONG>(m_height));
+  borderRect.bottom =
+    std::clamp<LONG>(borderRect.bottom, 0, static_cast<LONG>(m_height));
+  if (borderRect.right <= borderRect.left ||
+      borderRect.bottom <= borderRect.top) {
+    return;
+  }
+
+  constexpr DirectX::XMVECTORF32 borderColor{ { 1.0f, 0.965f, 0.78f, 0.88f } };
+  constexpr DirectX::XMVECTORF32 fillColor{ { 0.863f, 0.682f, 0.263f, 1.0f } };
+  m_pSpriteBatch->Draw(m_pHdnLoggerBarPixel.Get(), borderRect, nullptr,
+                       borderColor);
+
+  RECT fillRect = borderRect;
+  const LONG insetX =
+    std::max<LONG>(1, static_cast<LONG>(std::lround(scaleX)));
+  const LONG insetY =
+    std::max<LONG>(1, static_cast<LONG>(std::lround(scaleY)));
+  fillRect.left += insetX;
+  fillRect.right -= insetX;
+  fillRect.top += insetY;
+  fillRect.bottom -= insetY;
+  if (fillRect.right > fillRect.left && fillRect.bottom > fillRect.top) {
+    m_pSpriteBatch->Draw(m_pHdnLoggerBarPixel.Get(), fillRect, nullptr,
+                         fillColor);
+  }
 }
 }

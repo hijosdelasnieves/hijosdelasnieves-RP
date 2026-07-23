@@ -11,4 +11,8 @@ Napi::Value SetFocused(const Napi::CallbackInfo& info);
 Napi::Value IsFocused(const Napi::CallbackInfo& info);
 Napi::Value LoadUrl(const Napi::CallbackInfo& info);
 Napi::Value ExecuteJavaScript(const Napi::CallbackInfo& info);
+Napi::Value IsHdnLoggerNativeBarSupported(const Napi::CallbackInfo& info);
+Napi::Value StartHdnLoggerNativeBar(const Napi::CallbackInfo& info);
+Napi::Value StopHdnLoggerNativeBar(const Napi::CallbackInfo& info);
+Napi::Value ClearHdnLoggerNativeBar(const Napi::CallbackInfo& info);
 }

@@ -119,6 +119,26 @@ void Register(Napi::Env env, Napi::Object& exports)
                   Napi::Function::New(env,
                                       NapiHelper::WrapCppExceptions(
                                         BrowserApiTilted::ExecuteJavaScript)));
+      browser.Set("isHdnLoggerNativeBarSupported",
+                  Napi::Function::New(
+                    env,
+                    NapiHelper::WrapCppExceptions(
+                      BrowserApiTilted::IsHdnLoggerNativeBarSupported)));
+      browser.Set(
+        "startHdnLoggerNativeBar",
+        Napi::Function::New(env,
+                            NapiHelper::WrapCppExceptions(
+                              BrowserApiTilted::StartHdnLoggerNativeBar)));
+      browser.Set(
+        "stopHdnLoggerNativeBar",
+        Napi::Function::New(env,
+                            NapiHelper::WrapCppExceptions(
+                              BrowserApiTilted::StopHdnLoggerNativeBar)));
+      browser.Set(
+        "clearHdnLoggerNativeBar",
+        Napi::Function::New(env,
+                            NapiHelper::WrapCppExceptions(
+                              BrowserApiTilted::ClearHdnLoggerNativeBar)));
       break;
     case Backend::kNirnLab:
       browser.Set(
