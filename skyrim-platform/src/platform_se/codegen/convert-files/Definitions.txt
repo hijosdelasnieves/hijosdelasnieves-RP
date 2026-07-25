@@ -12,6 +12,17 @@ export declare function writePlugin(pluginName: string, newSources: string, over
 export declare function getPlatformVersion(): string
 export declare function disableCtrlPrtScnHotkey(): void
 export declare function setHdnMagicMenuBlocked(blocked: boolean): void
+export interface HdnVanillaMenuPolicyState {
+  policyVersion: number
+  mask: number
+  queueHookInstalled: boolean
+  inputFenceInstalled: boolean
+  blockedShowCount: number
+  blockedInputCount: number
+  failClosedDefault: boolean
+}
+export declare function setHdnVanillaMenuPolicy(mask: number): void
+export declare function getHdnVanillaMenuPolicyState(): HdnVanillaMenuPolicyState
 export declare function blockPapyrusEvents(block: boolean): void
 export declare function sendIpcMessage(targetSystemName: string, message: ArrayBuffer): void
 export declare function encodeUtf8(text: string): ArrayBuffer

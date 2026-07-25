@@ -21,6 +21,8 @@ Napi::Value BlockPapyrusEvents(const Napi::CallbackInfo& info);
 void DisableCtrlPrtScnHotkey();
 
 void SetHdnMagicMenuBlocked(bool blocked);
+void SetHdnVanillaMenuPolicy(std::uint32_t mask);
+Napi::Value GetHdnVanillaMenuPolicyState(const Napi::CallbackInfo& info);
 
 using NativeExportsMap =
   std::map<std::string, std::function<Napi::Object(const Napi::Object&)>>;
@@ -68,6 +70,19 @@ inline void Register(Napi::Env env, Napi::Object& exports,
                               NapiHelper::ExtractBoolean(info[0], "blocked"));
                             return info.Env().Undefined();
                           })));
+  exports.Set(
+    "setHdnVanillaMenuPolicy",
+    Napi::Function::New(env,
+                        NapiHelper::WrapCppExceptions(
+                          [](const Napi::CallbackInfo& info) -> Napi::Value {
+                            SetHdnVanillaMenuPolicy(
+                              NapiHelper::ExtractUInt32(info[0], "mask"));
+                            return info.Env().Undefined();
+                          })));
+  exports.Set(
+    "getHdnVanillaMenuPolicyState",
+    Napi::Function::New(
+      env, NapiHelper::WrapCppExceptions(GetHdnVanillaMenuPolicyState)));
   exports.Set(
     "disableCtrlPrtScnHotkey",
     Napi::Function::New(env,

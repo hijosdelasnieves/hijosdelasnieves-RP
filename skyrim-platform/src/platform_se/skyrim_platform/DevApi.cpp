@@ -1,12 +1,11 @@
 #include "DevApi.h"
 #include "FileUtils.h"
+#include "HdnVanillaMenuPolicy.h"
 #include "InvalidArgumentException.h"
 #include "NullPointerException.h"
 #include "PapyrusTESModPlatform.h"
 #include "Settings.h"
 #include "Validators.h"
-
-#include <atomic>
 
 DevApi::NativeExportsMap DevApi::nativeExportsMap;
 
@@ -192,65 +191,6 @@ Napi::Value DevApi::BlockPapyrusEvents(const Napi::CallbackInfo& info)
 }
 
 namespace {
-std::atomic_bool g_hdnMagicMenuBlocked{ false };
-
-bool IsHdnMagicMenuInput(RE::InputEvent* event)
-{
-  if (!event || event->eventType != RE::INPUT_EVENT_TYPE::kButton) {
-    return false;
-  }
-
-  const auto* userEvent = event->QUserEvent().c_str();
-  return userEvent &&
-    (strcmp(userEvent, "Magic") == 0 || strcmp(userEvent, "Magic Menu") == 0 ||
-     strcmp(userEvent, "MagicMenu") == 0);
-}
-
-class HdnMenuOpenEventHandler final : public RE::MenuEventHandler
-{
-public:
-  explicit HdnMenuOpenEventHandler(RE::MenuEventHandler* originalHandler_)
-    : originalHandler(originalHandler_)
-  {
-  }
-
-  bool CanProcess(RE::InputEvent* event) override
-  {
-    if (g_hdnMagicMenuBlocked.load(std::memory_order_acquire) &&
-        IsHdnMagicMenuInput(event)) {
-      return false;
-    }
-    return originalHandler && originalHandler->CanProcess(event);
-  }
-
-  bool ProcessKinect(RE::KinectEvent* event) override
-  {
-    return originalHandler && originalHandler->ProcessKinect(event);
-  }
-
-  bool ProcessThumbstick(RE::ThumbstickEvent* event) override
-  {
-    return originalHandler && originalHandler->ProcessThumbstick(event);
-  }
-
-  bool ProcessMouseMove(RE::MouseMoveEvent* event) override
-  {
-    return originalHandler && originalHandler->ProcessMouseMove(event);
-  }
-
-  bool ProcessButton(RE::ButtonEvent* event) override
-  {
-    if (g_hdnMagicMenuBlocked.load(std::memory_order_acquire) &&
-        IsHdnMagicMenuInput(event)) {
-      return false;
-    }
-    return originalHandler && originalHandler->ProcessButton(event);
-  }
-
-private:
-  RE::MenuEventHandler* originalHandler;
-};
-
 class WrapperScreenShotEventHandler : public RE::MenuEventHandler
 {
 public:
@@ -287,21 +227,34 @@ public:
 
 void DevApi::SetHdnMagicMenuBlocked(bool blocked)
 {
-  static HdnMenuOpenEventHandler* wrapper = nullptr;
-  if (!wrapper) {
-    auto* menuControls = RE::MenuControls::GetSingleton();
-    if (!menuControls || !menuControls->menuOpenHandler) {
-      throw std::runtime_error("MenuControls menuOpenHandler is unavailable");
-    }
+  HdnVanillaMenuPolicy::SetMagicBlocked(blocked);
+}
 
-    auto* originalHandler =
-      (RE::MenuEventHandler*)menuControls->menuOpenHandler.get();
-    wrapper = new HdnMenuOpenEventHandler(originalHandler);
-    menuControls->RemoveHandler(originalHandler);
-    menuControls->AddHandler(wrapper);
-  }
+void DevApi::SetHdnVanillaMenuPolicy(std::uint32_t mask)
+{
+  HdnVanillaMenuPolicy::SetMask(mask);
+}
 
-  g_hdnMagicMenuBlocked.store(blocked, std::memory_order_release);
+Napi::Value DevApi::GetHdnVanillaMenuPolicyState(
+  const Napi::CallbackInfo& info)
+{
+  const auto state = HdnVanillaMenuPolicy::GetState();
+  auto result = Napi::Object::New(info.Env());
+  result.Set("policyVersion",
+             Napi::Number::New(info.Env(), state.policyVersion));
+  result.Set("mask", Napi::Number::New(info.Env(), state.mask));
+  result.Set("queueHookInstalled",
+             Napi::Boolean::New(info.Env(), state.queueHookInstalled));
+  result.Set("inputFenceInstalled",
+             Napi::Boolean::New(info.Env(), state.inputFenceInstalled));
+  result.Set("blockedShowCount",
+             Napi::Number::New(info.Env(),
+                               static_cast<double>(state.blockedShowCount)));
+  result.Set("blockedInputCount",
+             Napi::Number::New(info.Env(),
+                               static_cast<double>(state.blockedInputCount)));
+  result.Set("failClosedDefault", Napi::Boolean::New(info.Env(), true));
+  return result;
 }
 
 void DevApi::DisableCtrlPrtScnHotkey()

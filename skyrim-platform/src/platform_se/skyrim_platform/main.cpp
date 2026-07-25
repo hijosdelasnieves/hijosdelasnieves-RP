@@ -10,6 +10,7 @@
 #include "EventsApi.h"
 #include "FlowManager.h"
 #include "FridaHooks.h"
+#include "HdnVanillaMenuPolicy.h"
 #include "Hooks.h"
 #include "IPC.h"
 #include "InputConverter.h"
@@ -181,9 +182,21 @@ DLLEXPORT bool SKSEAPI SKSEPlugin_Load_Impl(const SKSE::LoadInterface* skse)
 
   SKSE::GetMessagingInterface()->RegisterListener(
     [](SKSE::MessagingInterface::Message* a_msg) {
+      if (a_msg && a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
+        HdnVanillaMenuPolicy::EnsureInputFence();
+      }
       EventHandler::HandleSKSEMessage(a_msg);
       BrowserApiNirnLab::GetInstance().HandleSkseMessage(a_msg);
     });
+
+  // Install before JavaScript and before a save can finish loading. This
+  // closes the UIMessageQueue kShow path that the old reactive menuOpen
+  // listener could only observe after one visible Scaleform frame.
+  if (!HdnVanillaMenuPolicy::Initialize()) {
+    logger::critical(
+      "HDN vanilla authority: refusing to start without pre-show barrier");
+    return false;
+  }
 
   Hooks::Install();
   Frida::InstallHooks();
