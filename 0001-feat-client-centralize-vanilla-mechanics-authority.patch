@@ -1,0 +1,1107 @@
+From e9b2a4a8225315eac12a19e2aaeb7aa3662abe73 Mon Sep 17 00:00:00 2001
+From: HDN Release Automation <release@hijosdelasnieves.es>
+Date: Sat, 25 Jul 2026 23:55:18 +0200
+Subject: [PATCH] feat(client): centralize vanilla mechanics authority
+
+---
+ docs/HDN-VANILLA-AUTHORITY-CLIENT-SOURCE.md   |  42 +++
+ .../scripts/check-services-registered.js      |   7 +
+ skymp5-client/src/index.ts                    |  15 +-
+ .../services/services/menuPolicyService.ts    | 161 +++++----
+ .../services/vanillaAuthorityPolicy.test.ts   | 115 +++++++
+ .../services/vanillaAuthorityPolicy.ts        | 317 ++++++++++++++++++
+ .../services/vanillaAuthorityService.ts       | 301 +++++++++++++++++
+ 7 files changed, 868 insertions(+), 90 deletions(-)
+ create mode 100644 docs/HDN-VANILLA-AUTHORITY-CLIENT-SOURCE.md
+ create mode 100644 skymp5-client/src/services/services/vanillaAuthorityPolicy.test.ts
+ create mode 100644 skymp5-client/src/services/services/vanillaAuthorityPolicy.ts
+ create mode 100644 skymp5-client/src/services/services/vanillaAuthorityService.ts
+
+diff --git a/docs/HDN-VANILLA-AUTHORITY-CLIENT-SOURCE.md b/docs/HDN-VANILLA-AUTHORITY-CLIENT-SOURCE.md
+new file mode 100644
+index 0000000..b0fc4b7
+--- /dev/null
++++ b/docs/HDN-VANILLA-AUTHORITY-CLIENT-SOURCE.md
+@@ -0,0 +1,42 @@
++# HDN vanilla authority — client source
++
++This branch preserves the client-side half of the HDN vanilla authority
++release without importing unrelated changes from the shared production
++worktree.
++
++Base: `5ac4cb937bcd455ca5e3cfe754d657257ff9f820`.
++
++The feature consists of:
++
++- `vanillaAuthorityPolicy.ts`: fail-closed mask, short-lived controlled menu
++  leases and the local progression projection.
++- `vanillaAuthorityService.ts`: native policy attestation/reapplication and
++  repair of vanilla level, XP, perk-point and skill drift.
++- `vanillaAuthorityPolicy.test.ts`: pure policy, lease and projection tests.
++- `menuPolicyService.ts`: reactive compatibility barrier using the same
++  effective mask, with direct `MagicMenu` close and no synthetic Escape.
++- `index.ts`: one `VanillaAuthorityService` registration and retirement of
++  the four former client-owned perk/skill services.
++- `check-services-registered.js`: the retired historical services are
++  explicitly disabled rather than required by the packaging guard.
++
++Production pairing on 2026-07-25:
++
++- client `2026.07.25-234823`;
++- client ZIP SHA256
++  `ae185c4777ebdd0ee5078bfe3f10254a9ea397e51dee8e1119d38ec9613b3dd2`;
++- client JS SHA256
++  `7fbb9da47e45cdf7c3353b5ac99a35c186c7114ea00d4ee01231b7ece4d5e1f5`;
++- native runtime commit
++  `c893ab9d13f503f3ed719404d7175dcb5e2c229c`;
++- native runtime ZIP SHA256
++  `a000b78e0d06e2282f5f171555fd5aacbbe796a3a61c9310771a07c3b01f3b61`.
++
++The pure policy suite passes with mask `255`, controlled Crafting lease,
++expiry/release fail-closed behavior and progression projection replacement.
++The production bundle contains exactly one `VanillaAuthorityService`, none of
++the four retired registrations and no appended fallback runtime.
++
++The complete HDN worktree contains many newer systems not present in this base.
++They are intentionally absent from this branch; merge or cherry-pick this
++commit into the current HDN source line instead of replacing that line.
+diff --git a/skymp5-client/scripts/check-services-registered.js b/skymp5-client/scripts/check-services-registered.js
+index e0502c7..192c155 100644
+--- a/skymp5-client/scripts/check-services-registered.js
++++ b/skymp5-client/scripts/check-services-registered.js
+@@ -27,6 +27,13 @@ const INDEX_TS = path.join(ROOT, 'src/index.ts');
+ const KNOWN_DISABLED = new Set([
+   // 'JobsHudService',     // deprecated 2026-04-24, pendiente eliminación
+   // 'VanillaHudHideService', // desactivado 2026-04-22, lock spam
++  // El guard de produccion prohíbe estos servicios no autoritativos: no deben
++  // convertirse en requisitos del empaquetado mientras sus fuentes sigan en
++  // el árbol para compatibilidad histórica.
++  'DisableSkillAdvanceService',
++  'SweetTaffyDynamicPerksService',
++  'SweetTaffySkillMenuService',
++  'SweetTaffyStaticPerksService',
+ ]);
+ 
+ function readFile(p) {
+diff --git a/skymp5-client/src/index.ts b/skymp5-client/src/index.ts
+index 61d6a4a..fafaece 100644
+--- a/skymp5-client/src/index.ts
++++ b/skymp5-client/src/index.ts
+@@ -39,16 +39,13 @@ import { ContainersService } from "./services/services/containersService";
+ import { NetworkingService } from "./services/services/networkingService";
+ import { RemoteServer } from "./services/services/remoteServer";
+ import { SpSnippetService } from "./services/services/spSnippetService";
+-import { SweetTaffyDynamicPerksService } from "./services/services/sweetTaffyDynamicPerksService";
+ import { SweetTaffySweetCantDropService } from "./services/services/sweetTaffySweetCantDropService";
+-import { SweetTaffyStaticPerksService } from "./services/services/sweetTaffyStaticPerksService";
+-import { DisableSkillAdvanceService } from "./services/services/disableSkillAdvanceService";
++import { VanillaAuthorityService } from "./services/services/vanillaAuthorityService";
+ import { DisableFastTravelService } from "./services/services/disableFastTravelService";
+ import { DisableDifficultySelectionService } from "./services/services/disableDifficultySelectionService";
+ import { SweetTaffyPlayerCombatService } from "./services/services/sweetTaffyPlayerCombatService";
+ import { WorldCleanerService } from "./services/services/worldCleanerService";
+ import { HdnVendorFreezeService } from "./services/services/hdnVendorFreezeService";
+-import { SweetTaffySkillMenuService } from "./services/services/sweetTaffySkillMenuService";
+ import { LoadOrderVerificationService } from "./services/services/loadOrderVerificationService";
+ import { BrowserService } from "./services/services/browserService";
+ import { AuthService } from "./services/services/authService";
+@@ -275,6 +272,9 @@ const main = () => {
+       safe("LoadGameService", () => new LoadGameService(sp, controller)),
+       safe("SinglePlayerService", () => new SinglePlayerService(sp, controller)),
+       safe("EnforceLimitationsService", () => new EnforceLimitationsService(sp, controller)),
++      // Autoridad fail-closed de menús/progresión. Se registra antes de la
++      // replicación y no se desactiva al perder conexión.
++      safe("VanillaAuthorityService", () => new VanillaAuthorityService(sp, controller)),
+       safe("SendInputsService", () => new SendInputsService(sp, controller)),
+       safe("SkympClient", () => new SkympClient(sp, controller)),
+       safe("TimeService", () => new TimeService(sp, controller)),
+@@ -313,14 +313,13 @@ const main = () => {
+       safe("RemoteServer", () => new RemoteServer(sp, controller)),
+       safe("SpSnippetService", () => new SpSnippetService(sp, controller)),
+       safe("SettingsService", () => new SettingsService(sp, controller)),
+-      safe("SweetTaffyDynamicPerksService", () => new SweetTaffyDynamicPerksService(sp, controller)),
+-      safe("SweetTaffyStaticPerksService", () => new SweetTaffyStaticPerksService(sp, controller)),
++      // Las antiguas concesiones SweetTaffy añadían perks desde el cliente al
++      // detectar keywords o simplemente al arrancar. Quedan retiradas: los
++      // perks futuros entrarán exclusivamente como entitlement de servidor.
+       safe("SweetTaffySweetCantDropService", () => new SweetTaffySweetCantDropService(sp, controller)),
+       safe("SweetTaffyPlayerCombatService", () => new SweetTaffyPlayerCombatService(sp, controller)),
+-      safe("SweetTaffySkillMenuService", () => new SweetTaffySkillMenuService(sp, controller)),
+       safe("SweetCameraEnforcementService", () => new SweetCameraEnforcementService(sp, controller)),
+       safe("SweetTaffyEvalService", () => new SweetTaffyEvalService(sp, controller)),
+-      safe("DisableSkillAdvanceService", () => new DisableSkillAdvanceService(sp, controller)),
+       safe("DisableFastTravelService", () => new DisableFastTravelService(sp, controller)),
+       safe("DisableDifficultySelectionService", () => new DisableDifficultySelectionService(sp, controller)),
+       safe("WorldCleanerService", () => new WorldCleanerService(sp, controller)),
+diff --git a/skymp5-client/src/services/services/menuPolicyService.ts b/skymp5-client/src/services/services/menuPolicyService.ts
+index 9f3e29c..766fc57 100644
+--- a/skymp5-client/src/services/services/menuPolicyService.ts
++++ b/skymp5-client/src/services/services/menuPolicyService.ts
+@@ -3,9 +3,10 @@
+ // Politica de menus vanilla en HDN:
+ //   TAB     → libre (TweenMenu / InventoryMenu con SkyUI). No bloqueamos.
+ //   M       → libre (MapMenu). No bloqueamos.
+-//   Magia   → BLOQUEADA salvo whitelist (aun no implementada; de momento,
+-//             hard-block para todos). Se cierra la ventana inmediatamente
+-//             enviando ESC y se muestra una notificacion Skyrim.
++//   Magia   → BLOQUEADA siempre. Las licencias HDN se equipan desde L y nunca
++//             conceden acceso al menú vanilla. La barrera nativa consume el
++//             control antes de abrirlo; el cierre directo queda como respaldo
++//             y nunca sintetiza ESC.
+ //   Stats/  → BLOQUEADA. Los perks/habilidades en HDN se gestionan por
+ //   Skills   oficios y whitelists; no tiene sentido que el jugador gaste
+ //             perks vanilla sobre un arbol que no vamos a usar. Redirige
+@@ -16,26 +17,24 @@
+ //             gestiona aqui (antes era cierre reactivo con ESC que
+ //             parpadeaba).
+ //
+-// Implementacion: on('menuOpen') listener. Cuando el nombre del menu es
+-// uno de los bloqueados, llamamos a Input.tapKey(ESC) un tick despues
+-// (la vanilla Skyrim lo interpreta como "cerrar este menu") y sacamos
+-// una notificacion al jugador.
+-//
+-// NOTA: este servicio NO intercepta teclas crudas (eso lo hace la propia
+-// Skyrim). Actuamos reactivamente al evento menuOpen, que es el hook
+-// soportado y estable en SkyrimPlatform.
++// Implementacion principal: HdnVanillaMenuPolicy intercepta kShow en
++// UIMessageQueue antes de construir Scaleform y filtra ademas el input
++// mapeado. Este listener menuOpen es exclusivamente la defensa compatible
++// para runtimes antiguos o una deriva del hook nativo.
+ 
+ import { logError, logTrace } from "../../logging";
+ import { ClientListener, CombinedController, Sp } from "./clientListener";
+ import { Debug, Input } from "skyrimPlatform";
++import {
++    hdnVanillaMenuFlagForName,
++    hdnVanillaMenuLeases,
++    HdnVanillaMenuFlag,
++    isHdnVanillaMenuBlocked,
++} from "./vanillaAuthorityPolicy";
+ 
+ // DirectInput scancode para Escape.
+ const DX_ESCAPE = 0x01;
+ 
+-// Whitelist de magia: futura (Fase D magic-whitelist). Por ahora vacia.
+-// Cuando llegue, la pobla un packet del servidor (p.ej. hdnMagicWhitelist).
+-const MAGIC_WHITELISTED_UNTIL_SERVER_ANSWERS: Set<number> = new Set();
+-
+ // Anti-spam de notificaciones: no mostrar la misma mas de una vez por
+ // periodo corto (el engine dispara menuOpen varias veces seguidas si el
+ // jugador martillea Tab → Magic).
+@@ -46,84 +45,53 @@ interface BlockedMenuSpec {
+     readonly toastText: string;
+ }
+ 
+-const BLOCKED_MENUS: ReadonlyArray<BlockedMenuSpec> = [
+-    {
+-        name: "MagicMenu",
+-        toastText: "La magia esta restringida. Busca plaza en el Colegio de Hibernalia.",
+-    },
+-    {
+-        name: "StatsMenu",
+-        toastText: "Los perks se gestionan por oficio (usa /oficio o /estado).",
+-    },
+-    // HDN 2026-05-11 [bloqueo-vanilla]: J (JournalMenu) — diario y misiones
+-    // vanilla no aplican en el reino. F (FavoritesMenu) — el equipamiento se
+-    // gestiona desde el panel HDN. Ambos cierran con ESC sin ruido.
+-    {
+-        name: "JournalMenu",
+-        toastText: "El diario vanilla no se usa. Las gestas se llevan en chat y al maestre.",
+-    },
+-    {
+-        name: "FavoritesMenu",
+-        toastText: "Equipa desde el panel HDN (K). Los favoritos vanilla no se usan.",
+-    },
+-    // HDN 2026-05-15 [wait-menu-root-disable]: "Sleep/Wait Menu" ya NO se
+-    // bloquea aqui — se desactiva de raiz en enforceLimitationsService via
+-    // setInChargen(_, abDisableWaiting=true, _), asi el motor nunca lo abre.
+-    // El cierre reactivo con ESC parpadeaba ~1s; eliminado.
+-    //
+-    // HDN 2026-05-13 [crafting-vanilla]: bloquear menús vanilla de crafting.
+-    // El HUD HDN se abre via server packet (hdnHerreriaOpen) solo si el
+-    // player es artesano autorizado. El menú vanilla se cierra reactivamente
+-    // con tapKey(ESC) en `once('update')` (safe - no causa CTD).
+-    // Toast vacío = bloqueo silencioso, el toast de denegado/permitido lo
+-    // envía el server.
+-    { name: "CraftingMenu",         toastText: "" },
+-    { name: "SmithingMenu",         toastText: "" },
+-    { name: "TanningMenu",          toastText: "" },
+-    { name: "CookingMenu",          toastText: "" },
+-    { name: "AlchemyMenu",          toastText: "" },
+-    { name: "EnchantConstructMenu", toastText: "Encantamiento restringido." },
+-];
++function blockedMenuSpec(name: string): BlockedMenuSpec | null {
++    const effectiveMask =
++        hdnVanillaMenuLeases.getEffectiveBlockedMask(Date.now());
++    if (!isHdnVanillaMenuBlocked(name, effectiveMask)) return null;
++    const flag = hdnVanillaMenuFlagForName(name);
++    let toastText = "";
++    switch (flag) {
++        case HdnVanillaMenuFlag.Magic:
++            toastText = "La magia se gestiona exclusivamente desde la Escuela HDN (tecla L).";
++            break;
++        case HdnVanillaMenuFlag.Stats:
++        case HdnVanillaMenuFlag.LevelUp:
++            toastText = "Los niveles y habilidades se gestionan desde HDN.";
++            break;
++        case HdnVanillaMenuFlag.Journal:
++            toastText = "El diario vanilla no se usa. Las gestas se llevan en HDN.";
++            break;
++        case HdnVanillaMenuFlag.Favorites:
++            toastText = "Equipa desde el panel HDN (K).";
++            break;
++        case HdnVanillaMenuFlag.Training:
++            toastText = "El entrenamiento se gestiona mediante progresión HDN.";
++            break;
++        case HdnVanillaMenuFlag.SleepWait:
++            toastText = "Esperar está desactivado en el Reino.";
++            break;
++        case HdnVanillaMenuFlag.Crafting:
++            toastText = name === "EnchantConstructMenu"
++                ? "Encantamiento restringido."
++                : "";
++            break;
++    }
++    return { name, toastText };
++}
+ 
+ export class MenuPolicyService extends ClientListener {
+-    private active = false;
+     private lastToastAt = new Map<string, number>();
+-    // Si true, el jugador esta en la whitelist de magia (packet futuro).
+-    private canUseMagic = false;
+-
+     constructor(private sp: Sp, private controller: CombinedController) {
+         super();
+-        this.controller.emitter.on("connectionAccepted", () => { this.active = true; });
+-        this.controller.emitter.on("connectionDisconnect", () => { this.active = false; });
+-        this.controller.emitter.on("connectionDenied", () => { this.active = false; });
+-        this.controller.emitter.on("connectionFailed", () => { this.active = false; });
+         this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
+-        // Placeholder para el packet futuro de whitelist de magia.
+-        this.controller.emitter.on("customPacketMessage", (evt) => {
+-            try {
+-                const content = JSON.parse((evt as any)?.message?.contentJsonDump || "{}");
+-                if (content && content.customPacketType === "hdnMagicWhitelist") {
+-                    this.canUseMagic = !!content.allowed;
+-                    logTrace(this, "magic whitelist updated from server: allowed=" + this.canUseMagic);
+-                }
+-            } catch (_) { /* not our packet */ }
+-        });
+-        // Placeholder: MAGIC_WHITELISTED_UNTIL_SERVER_ANSWERS se puede
+-        // alimentar manualmente en dev para probar; en prod lo hace el packet.
+-        void MAGIC_WHITELISTED_UNTIL_SERVER_ANSWERS;
+     }
+ 
+     private onMenuOpen(e: { name: string }): void {
+-        if (!this.active) return;
+         const name = e && typeof e.name === "string" ? e.name : "";
+         if (!name) return;
+-        const spec = BLOCKED_MENUS.find((b) => b.name === name);
++        const spec = blockedMenuSpec(name);
+         if (!spec) return;
+-        if (name === "MagicMenu" && this.canUseMagic) {
+-            // Whitelist de magia activa: no bloqueamos.
+-            logTrace(this, "MagicMenu permitido (jugador en whitelist)");
+-            return;
+-        }
+         this.closeMenuAndNotify(spec);
+     }
+ 
+@@ -165,7 +133,8 @@ export class MenuPolicyService extends ClientListener {
+         // — incluido crafting — solo tapKey(ESC), pero ahora con reintento
+         // (aggressiveCloseMenu) en vez de un unico tap que fallaba durante
+         // el fade-in del menu Flash.
+-        this.aggressiveCloseMenu(spec.name);
++        if (spec.name === "MagicMenu") this.directCloseMenu(spec.name);
++        else this.aggressiveCloseMenu(spec.name);
+         // 2) Notificar al jugador (solo una vez cada TOAST_THROTTLE_MS).
+         // Si toastText es vacio, bloqueo silencioso (sin notificacion).
+         if (spec.toastText) {
+@@ -182,4 +151,32 @@ export class MenuPolicyService extends ClientListener {
+         }
+         logTrace(this, "blocked menu: " + spec.name);
+     }
++
++    private directCloseMenu(menuName: string): void {
++        // MagicMenu no puede usar el cierre historico por ESC: cuando el
++        // cierre directo ya ha retirado magia, el ESC pendiente abre el menu
++        // de pausa. Repetimos Ui.closeMenu unas pocas actualizaciones sin
++        // generar ninguna otra entrada de teclado.
++        const MAX_FRAMES = 8;
++        let frames = 0;
++        const tick = () => {
++            frames++;
++            let stillOpen = false;
++            try { stillOpen = this.sp.Ui.isMenuOpen(menuName); } catch (_) { /* noop */ }
++            if (stillOpen) {
++                try {
++                    (this.sp.callNative as any)("TESModPlatform", "CloseMenu", undefined, menuName);
++                } catch (_) { /* noop */ }
++            }
++            if (stillOpen && frames < MAX_FRAMES) {
++                try { this.controller.once("update", tick); } catch (_) { /* noop */ }
++            }
++        };
++        try {
++            (this.sp.callNative as any)("TESModPlatform", "CloseMenu", undefined, menuName);
++            this.controller.once("update", tick);
++        } catch (error) {
++            logError(this, "directCloseMenu failed", error);
++        }
++    }
+ }
+diff --git a/skymp5-client/src/services/services/vanillaAuthorityPolicy.test.ts b/skymp5-client/src/services/services/vanillaAuthorityPolicy.test.ts
+new file mode 100644
+index 0000000..85c0f0e
+--- /dev/null
++++ b/skymp5-client/src/services/services/vanillaAuthorityPolicy.test.ts
+@@ -0,0 +1,115 @@
++import {
++  decodeHdnVanillaMenuPolicyState,
++  HDN_VANILLA_AUTHORITY_POLICY_VERSION,
++  HDN_VANILLA_FAIL_CLOSED_MENU_MASK,
++  HdnVanillaMenuLeaseRegistry,
++  HdnVanillaProgressionProjectionStore,
++  HdnVanillaMenuFlag,
++  hdnVanillaMenuFlagForName,
++  isHdnVanillaMenuBlocked,
++  isHdnVanillaNativeBarrierHealthy,
++} from "./vanillaAuthorityPolicy";
++
++declare const require: { main?: unknown } | undefined;
++declare const module: unknown;
++
++function assert(condition: boolean, message: string): void {
++  if (!condition) throw new Error(message);
++}
++
++export function runVanillaAuthorityPolicyTests(): void {
++  assert(hdnVanillaMenuFlagForName("MagicMenu") === HdnVanillaMenuFlag.Magic,
++    "MagicMenu must map to the native magic bit");
++  assert(hdnVanillaMenuFlagForName("Journal Menu") === HdnVanillaMenuFlag.Journal,
++    "the real Skyrim Journal Menu name must be covered");
++  assert(hdnVanillaMenuFlagForName("Crafting Menu") === HdnVanillaMenuFlag.Crafting,
++    "the real Skyrim Crafting Menu name must be covered");
++  assert(hdnVanillaMenuFlagForName("InventoryMenu") === 0,
++    "inventory remains outside the managed deny policy");
++
++  for (const name of [
++    "MagicMenu",
++    "StatsMenu",
++    "Journal Menu",
++    "FavoritesMenu",
++    "Crafting Menu",
++    "Training Menu",
++    "LevelUp Menu",
++    "Sleep/Wait Menu",
++  ]) {
++    assert(isHdnVanillaMenuBlocked(name),
++      `${name} must fail closed in the HDN runtime`);
++  }
++
++  const healthy = decodeHdnVanillaMenuPolicyState({
++    policyVersion: HDN_VANILLA_AUTHORITY_POLICY_VERSION,
++    mask: HDN_VANILLA_FAIL_CLOSED_MENU_MASK,
++    queueHookInstalled: true,
++    inputFenceInstalled: true,
++    blockedShowCount: 2,
++    blockedInputCount: 3,
++    failClosedDefault: true,
++  });
++  assert(isHdnVanillaNativeBarrierHealthy(healthy),
++    "a complete pre-show and input barrier must attest healthy");
++  assert(!isHdnVanillaNativeBarrierHealthy(
++    healthy && { ...healthy, queueHookInstalled: false }),
++  "a reactive-only runtime must never attest healthy");
++  assert(!isHdnVanillaNativeBarrierHealthy(
++    healthy && { ...healthy, mask: HdnVanillaMenuFlag.Magic }),
++  "a partial menu mask must never attest as the complete authority policy");
++  assert(isHdnVanillaNativeBarrierHealthy(
++    healthy && {
++      ...healthy,
++      mask: HDN_VANILLA_FAIL_CLOSED_MENU_MASK & ~HdnVanillaMenuFlag.Crafting,
++    },
++    HDN_VANILLA_FAIL_CLOSED_MENU_MASK & ~HdnVanillaMenuFlag.Crafting,
++  ), "an exact controlled reuse mask must attest healthy");
++  assert(decodeHdnVanillaMenuPolicyState({ mask: 1 }) === null,
++    "malformed native state must fail closed");
++
++  let now = 1_000;
++  const leases = new HdnVanillaMenuLeaseRegistry(() => now);
++  const crafting = leases.acquire(
++    "artisan",
++    HdnVanillaMenuFlag.Crafting,
++    500,
++  );
++  assert(
++    leases.getEffectiveBlockedMask() ===
++      (HDN_VANILLA_FAIL_CLOSED_MENU_MASK & ~HdnVanillaMenuFlag.Crafting),
++    "a lease must only open its declared menu bit",
++  );
++  assert(leases.renew(crafting, 600), "an active lease must renew");
++  now += 599;
++  assert(leases.snapshot().length === 1, "a renewed lease must stay active");
++  now += 1;
++  assert(leases.snapshot().length === 0, "a lease must expire fail-closed");
++
++  const magic = leases.acquire("academy", HdnVanillaMenuFlag.Magic);
++  assert(leases.release(magic), "the owner must be able to release its lease");
++  assert(
++    leases.getEffectiveBlockedMask() === HDN_VANILLA_FAIL_CLOSED_MENU_MASK,
++    "release must immediately restore the full deny mask",
++  );
++
++  const progression = new HdnVanillaProgressionProjectionStore();
++  assert(progression.capturePlayerLevel(12) === 12,
++    "the initial local player level must be captured");
++  assert(progression.capturePlayerLevel(13) === 12,
++    "vanilla drift must not replace the canonical player level");
++  progression.setPlayerLevel(14);
++  assert(progression.getPlayerLevel() === 14,
++    "an HDN system must be able to replace the projected player level");
++  progression.captureSkillLevel(18, 25);
++  progression.captureSkillLevel(18, 26);
++  assert(progression.getSkillLevel(18) === 25,
++    "skill drift must not replace the captured projection");
++  progression.setSkillLevel(18, 30);
++  assert(progression.snapshot().skillLevels[18] === 30,
++    "an HDN system must be able to replace a projected skill level");
++}
++
++if (typeof require !== "undefined" && require.main === module) {
++  runVanillaAuthorityPolicyTests();
++}
+diff --git a/skymp5-client/src/services/services/vanillaAuthorityPolicy.ts b/skymp5-client/src/services/services/vanillaAuthorityPolicy.ts
+new file mode 100644
+index 0000000..c745711
+--- /dev/null
++++ b/skymp5-client/src/services/services/vanillaAuthorityPolicy.ts
+@@ -0,0 +1,317 @@
++export const HDN_VANILLA_AUTHORITY_POLICY_VERSION = 1;
++export const HDN_VANILLA_MENU_LEASE_DEFAULT_MS = 15_000;
++export const HDN_VANILLA_MENU_LEASE_MAX_MS = 60_000;
++
++export enum HdnVanillaMenuFlag {
++  Magic = 1 << 0,
++  Stats = 1 << 1,
++  Journal = 1 << 2,
++  Favorites = 1 << 3,
++  Crafting = 1 << 4,
++  Training = 1 << 5,
++  LevelUp = 1 << 6,
++  SleepWait = 1 << 7,
++}
++
++export const HDN_VANILLA_FAIL_CLOSED_MENU_MASK =
++  HdnVanillaMenuFlag.Magic |
++  HdnVanillaMenuFlag.Stats |
++  HdnVanillaMenuFlag.Journal |
++  HdnVanillaMenuFlag.Favorites |
++  HdnVanillaMenuFlag.Crafting |
++  HdnVanillaMenuFlag.Training |
++  HdnVanillaMenuFlag.LevelUp |
++  HdnVanillaMenuFlag.SleepWait;
++
++export const HDN_VANILLA_KNOWN_MENU_MASK =
++  HDN_VANILLA_FAIL_CLOSED_MENU_MASK;
++
++export interface HdnVanillaMenuPolicyState {
++  policyVersion: number;
++  mask: number;
++  queueHookInstalled: boolean;
++  inputFenceInstalled: boolean;
++  blockedShowCount: number;
++  blockedInputCount: number;
++  failClosedDefault: boolean;
++}
++
++const MENU_FLAGS: Readonly<Record<string, HdnVanillaMenuFlag>> = {
++  "MagicMenu": HdnVanillaMenuFlag.Magic,
++  "Magic Menu": HdnVanillaMenuFlag.Magic,
++  "StatsMenu": HdnVanillaMenuFlag.Stats,
++  "Stats Menu": HdnVanillaMenuFlag.Stats,
++  "Journal Menu": HdnVanillaMenuFlag.Journal,
++  "JournalMenu": HdnVanillaMenuFlag.Journal,
++  "FavoritesMenu": HdnVanillaMenuFlag.Favorites,
++  "Favorites Menu": HdnVanillaMenuFlag.Favorites,
++  "Crafting Menu": HdnVanillaMenuFlag.Crafting,
++  "CraftingMenu": HdnVanillaMenuFlag.Crafting,
++  "SmithingMenu": HdnVanillaMenuFlag.Crafting,
++  "TanningMenu": HdnVanillaMenuFlag.Crafting,
++  "Cooking Menu": HdnVanillaMenuFlag.Crafting,
++  "CookingMenu": HdnVanillaMenuFlag.Crafting,
++  "AlchemyMenu": HdnVanillaMenuFlag.Crafting,
++  "EnchantConstructMenu": HdnVanillaMenuFlag.Crafting,
++  "Training Menu": HdnVanillaMenuFlag.Training,
++  "TrainingMenu": HdnVanillaMenuFlag.Training,
++  "LevelUp Menu": HdnVanillaMenuFlag.LevelUp,
++  "LevelUpMenu": HdnVanillaMenuFlag.LevelUp,
++  "Sleep/Wait Menu": HdnVanillaMenuFlag.SleepWait,
++  "SleepWaitMenu": HdnVanillaMenuFlag.SleepWait,
++};
++
++export function hdnVanillaMenuFlagForName(name: unknown): number {
++  return typeof name === "string" ? (MENU_FLAGS[name] || 0) : 0;
++}
++
++export function isHdnVanillaMenuBlocked(
++  name: unknown,
++  mask = HDN_VANILLA_FAIL_CLOSED_MENU_MASK,
++): boolean {
++  const flag = hdnVanillaMenuFlagForName(name);
++  return flag !== 0 && (mask & flag) !== 0;
++}
++
++export function decodeHdnVanillaMenuPolicyState(
++  value: unknown,
++): HdnVanillaMenuPolicyState | null {
++  if (!value || typeof value !== "object") return null;
++  const candidate = value as Partial<HdnVanillaMenuPolicyState>;
++  if (!Number.isInteger(candidate.policyVersion) ||
++      !Number.isInteger(candidate.mask) ||
++      typeof candidate.queueHookInstalled !== "boolean" ||
++      typeof candidate.inputFenceInstalled !== "boolean" ||
++      typeof candidate.failClosedDefault !== "boolean" ||
++      typeof candidate.blockedShowCount !== "number" ||
++      typeof candidate.blockedInputCount !== "number") {
++    return null;
++  }
++  return {
++    policyVersion: Number(candidate.policyVersion),
++    mask: Number(candidate.mask) >>> 0,
++    queueHookInstalled: candidate.queueHookInstalled,
++    inputFenceInstalled: candidate.inputFenceInstalled,
++    blockedShowCount: Math.max(0, Number(candidate.blockedShowCount) || 0),
++    blockedInputCount: Math.max(0, Number(candidate.blockedInputCount) || 0),
++    failClosedDefault: candidate.failClosedDefault,
++  };
++}
++
++export function isHdnVanillaNativeBarrierHealthy(
++  state: HdnVanillaMenuPolicyState | null,
++  expectedMask = HDN_VANILLA_FAIL_CLOSED_MENU_MASK,
++): boolean {
++  return !!state &&
++    state.policyVersion === HDN_VANILLA_AUTHORITY_POLICY_VERSION &&
++    state.queueHookInstalled &&
++    state.inputFenceInstalled &&
++    state.failClosedDefault &&
++    (state.mask & HDN_VANILLA_KNOWN_MENU_MASK) ===
++      (expectedMask & HDN_VANILLA_KNOWN_MENU_MASK);
++}
++
++export interface HdnVanillaMenuLease {
++  readonly token: string;
++  readonly owner: string;
++  readonly allowedMask: number;
++  readonly expiresAt: number;
++}
++
++type LeaseListener = () => void;
++
++/**
++ * Short-lived capability registry for systems that intentionally reuse a
++ * vanilla menu. A lease can only subtract known bits from the fail-closed
++ * mask, expires automatically, and is cleared on load/disconnect by the
++ * authority service.
++ */
++export class HdnVanillaMenuLeaseRegistry {
++  private readonly leases = new Map<string, HdnVanillaMenuLease>();
++  private readonly listeners = new Set<LeaseListener>();
++  private sequence = 0;
++
++  constructor(private readonly now: () => number = () => Date.now()) {}
++
++  acquire(
++    owner: string,
++    allowedMask: number,
++    ttlMs = HDN_VANILLA_MENU_LEASE_DEFAULT_MS,
++  ): string {
++    const normalizedOwner = String(owner || "").trim();
++    if (!normalizedOwner || normalizedOwner.length > 64) {
++      throw new Error("vanilla menu lease owner must contain 1-64 characters");
++    }
++    const normalizedMask =
++      (Number(allowedMask) >>> 0) & HDN_VANILLA_KNOWN_MENU_MASK;
++    if (normalizedMask === 0) {
++      throw new Error("vanilla menu lease must allow a known menu bit");
++    }
++    const issuedAt = this.now();
++    const token = `${normalizedOwner}:${issuedAt}:${++this.sequence}`;
++    this.leases.set(token, {
++      token,
++      owner: normalizedOwner,
++      allowedMask: normalizedMask,
++      expiresAt: issuedAt + this.normalizeTtl(ttlMs),
++    });
++    this.notify();
++    return token;
++  }
++
++  renew(token: string, ttlMs = HDN_VANILLA_MENU_LEASE_DEFAULT_MS): boolean {
++    this.pruneExpired(this.now());
++    const current = this.leases.get(token);
++    if (!current) return false;
++    this.leases.set(token, {
++      ...current,
++      expiresAt: this.now() + this.normalizeTtl(ttlMs),
++    });
++    this.notify();
++    return true;
++  }
++
++  release(token: string): boolean {
++    const released = this.leases.delete(token);
++    if (released) this.notify();
++    return released;
++  }
++
++  clear(): void {
++    if (this.leases.size === 0) return;
++    this.leases.clear();
++    this.notify();
++  }
++
++  getAllowedMask(at = this.now()): number {
++    this.pruneExpired(at);
++    let allowedMask = 0;
++    this.leases.forEach((lease) => {
++      allowedMask |= lease.allowedMask;
++    });
++    return allowedMask & HDN_VANILLA_KNOWN_MENU_MASK;
++  }
++
++  getEffectiveBlockedMask(at = this.now()): number {
++    return HDN_VANILLA_FAIL_CLOSED_MENU_MASK & ~this.getAllowedMask(at);
++  }
++
++  snapshot(at = this.now()): ReadonlyArray<HdnVanillaMenuLease> {
++    this.pruneExpired(at);
++    return Array.from(this.leases.values()).sort((a, b) =>
++      a.expiresAt - b.expiresAt || a.token.localeCompare(b.token));
++  }
++
++  subscribe(listener: LeaseListener): () => void {
++    this.listeners.add(listener);
++    return () => this.listeners.delete(listener);
++  }
++
++  private normalizeTtl(ttlMs: number): number {
++    const finite = Number.isFinite(ttlMs)
++      ? Math.floor(ttlMs)
++      : HDN_VANILLA_MENU_LEASE_DEFAULT_MS;
++    return Math.max(100, Math.min(HDN_VANILLA_MENU_LEASE_MAX_MS, finite));
++  }
++
++  private pruneExpired(at: number): void {
++    this.leases.forEach((lease, token) => {
++      if (lease.expiresAt <= at) this.leases.delete(token);
++    });
++  }
++
++  private notify(): void {
++    this.listeners.forEach((listener) => {
++      try { listener(); } catch (_) { /* authority keeps reconciling */ }
++    });
++  }
++}
++
++export const hdnVanillaMenuLeases = new HdnVanillaMenuLeaseRegistry();
++
++export interface HdnVanillaProgressionProjectionSnapshot {
++  readonly playerLevel: number | null;
++  readonly skillLevels: Readonly<Record<number, number>>;
++}
++
++/**
++ * Canonical local projection used by the reconciler. Server-owned progression
++ * systems update this store before applying their level/skill changes; random
++ * vanilla XP, books and scripts are repaired back to the stored values.
++ */
++export class HdnVanillaProgressionProjectionStore {
++  private playerLevel: number | null = null;
++  private readonly skillLevels = new Map<number, number>();
++
++  reset(): void {
++    this.playerLevel = null;
++    this.skillLevels.clear();
++  }
++
++  capturePlayerLevel(level: number): number {
++    if (this.playerLevel === null) this.playerLevel = this.validPlayerLevel(level);
++    return this.playerLevel;
++  }
++
++  captureSkillLevel(actorValue: number, level: number): number {
++    const id = this.validSkillActorValue(actorValue);
++    if (!this.skillLevels.has(id)) {
++      this.skillLevels.set(id, this.validSkillLevel(level));
++    }
++    return this.skillLevels.get(id)!;
++  }
++
++  setPlayerLevel(level: number): void {
++    this.playerLevel = this.validPlayerLevel(level);
++  }
++
++  setSkillLevel(actorValue: number, level: number): void {
++    this.skillLevels.set(
++      this.validSkillActorValue(actorValue),
++      this.validSkillLevel(level),
++    );
++  }
++
++  getPlayerLevel(): number | null {
++    return this.playerLevel;
++  }
++
++  getSkillLevel(actorValue: number): number | null {
++    return this.skillLevels.get(Number(actorValue)) ?? null;
++  }
++
++  snapshot(): HdnVanillaProgressionProjectionSnapshot {
++    const skillLevels: Record<number, number> = {};
++    this.skillLevels.forEach((level, actorValue) => {
++      skillLevels[actorValue] = level;
++    });
++    return { playerLevel: this.playerLevel, skillLevels };
++  }
++
++  private validPlayerLevel(level: number): number {
++    const value = Number(level);
++    if (!Number.isFinite(value) || value < 1 || value > 65_535) {
++      throw new Error("HDN projected player level is invalid");
++    }
++    return Math.floor(value);
++  }
++
++  private validSkillActorValue(actorValue: number): number {
++    const value = Number(actorValue);
++    if (!Number.isInteger(value) || value < 6 || value > 23) {
++      throw new Error("HDN projected skill actor value is invalid");
++    }
++    return value;
++  }
++
++  private validSkillLevel(level: number): number {
++    const value = Number(level);
++    if (!Number.isFinite(value) || value < 0 || value > 10_000) {
++      throw new Error("HDN projected skill level is invalid");
++    }
++    return value;
++  }
++}
++
++export const hdnVanillaProgressionProjection =
++  new HdnVanillaProgressionProjectionStore();
+diff --git a/skymp5-client/src/services/services/vanillaAuthorityService.ts b/skymp5-client/src/services/services/vanillaAuthorityService.ts
+new file mode 100644
+index 0000000..14bc1bb
+--- /dev/null
++++ b/skymp5-client/src/services/services/vanillaAuthorityService.ts
+@@ -0,0 +1,301 @@
++import { ActorValue } from "skyrimPlatform";
++import { logError, logTrace } from "../../logging";
++import { ClientListener, CombinedController, Sp } from "./clientListener";
++import {
++  decodeHdnVanillaMenuPolicyState,
++  hdnVanillaMenuLeases,
++  hdnVanillaProgressionProjection,
++  isHdnVanillaNativeBarrierHealthy,
++} from "./vanillaAuthorityPolicy";
++
++const POLICY_RECONCILE_MS = 2_000;
++const PROGRESSION_RECONCILE_MS = 10_000;
++const NATIVE_STATE_LOG_MS = 30_000;
++
++const VANILLA_SKILLS: ReadonlyArray<ActorValue> = [
++  ActorValue.Alteration,
++  ActorValue.Conjuration,
++  ActorValue.Destruction,
++  ActorValue.Illusion,
++  ActorValue.Restoration,
++  ActorValue.Enchanting,
++  ActorValue.OneHanded,
++  ActorValue.TwoHanded,
++  ActorValue.Archery,
++  ActorValue.Block,
++  ActorValue.Smithing,
++  ActorValue.HeavyArmor,
++  ActorValue.LightArmor,
++  ActorValue.Pickpocket,
++  ActorValue.Lockpicking,
++  ActorValue.Sneak,
++  ActorValue.Alchemy,
++  ActorValue.Speech,
++];
++
++interface NativePolicyApi {
++  setHdnVanillaMenuPolicy?: (mask: number) => void;
++  getHdnVanillaMenuPolicyState?: () => unknown;
++  setHdnMagicMenuBlocked?: (blocked: boolean) => void;
++}
++
++/**
++ * Single client-side reconciler for native mechanics that HDN owns.
++ *
++ * The native UI queue gate is installed before this bundle starts. This
++ * service attests/reapplies that policy, freezes vanilla progression, and
++ * repairs drift caused by books, scripts, old saves or a late level event.
++ * It deliberately remains fail-closed across network disconnects.
++ */
++export class VanillaAuthorityService extends ClientListener {
++  private lastPolicyAt = 0;
++  private lastProgressionAt = 0;
++  private lastNativeStateLogAt = 0;
++  private nativeApiFailureReported = false;
++  private nativeBarrierFailureReported = false;
++  private progressionUrgent = true;
++
++  constructor(
++    private readonly sp: Sp,
++    private readonly controller: CombinedController,
++  ) {
++    super();
++
++    this.controller.on("update", () => this.onUpdate());
++    this.controller.on("skillIncrease", () => this.requestProgressionRepair());
++    this.controller.on("levelIncrease", (event) => {
++      this.requestProgressionRepair();
++      logError(this,
++        "vanilla level drift intercepted; HDN progression remains authoritative",
++        { newLevel: Number((event as any)?.newLevel) || 0 });
++    });
++    this.controller.emitter.on("gameLoad", () => this.onGameLoad());
++    this.controller.emitter.on("connectionAccepted",
++      () => this.resetAuthorityBoundary());
++    this.controller.emitter.on("connectionDisconnect",
++      () => this.resetAuthorityBoundary());
++    this.controller.emitter.on("connectionDenied",
++      () => this.resetAuthorityBoundary());
++    this.controller.emitter.on("connectionFailed",
++      () => this.resetAuthorityBoundary());
++    hdnVanillaMenuLeases.clear();
++    hdnVanillaMenuLeases.subscribe(() => {
++      this.lastPolicyAt = 0;
++      this.applyNativeMenuPolicy(Date.now());
++    });
++
++    // Attest immediately. The native DLL already starts with the same mask,
++    // so this is a confirmation/revision write rather than the first barrier.
++    this.applyNativeMenuPolicy(Date.now());
++  }
++
++  private onGameLoad(): void {
++    // A different save has a different local projection. Capture it only once
++    // the new player is fully ready, then hold it stable until the server owns
++    // an explicit skill mirror.
++    hdnVanillaProgressionProjection.reset();
++    this.resetAuthorityBoundary();
++  }
++
++  private requestProgressionRepair(): void {
++    this.progressionUrgent = true;
++    this.lastProgressionAt = 0;
++  }
++
++  private requestFullReconcile(): void {
++    this.lastPolicyAt = 0;
++    this.requestProgressionRepair();
++  }
++
++  private resetAuthorityBoundary(): void {
++    hdnVanillaMenuLeases.clear();
++    this.requestFullReconcile();
++  }
++
++  private onUpdate(): void {
++    const now = Date.now();
++    if (now - this.lastPolicyAt >= POLICY_RECONCILE_MS) {
++      this.applyNativeMenuPolicy(now);
++    }
++    if (this.progressionUrgent ||
++        now - this.lastProgressionAt >= PROGRESSION_RECONCILE_MS) {
++      this.reconcileVanillaProgression(now);
++    }
++  }
++
++  private applyNativeMenuPolicy(now: number): void {
++    this.lastPolicyAt = now;
++    const native = this.sp as unknown as NativePolicyApi;
++    if (typeof native.setHdnVanillaMenuPolicy !== "function") {
++      // Compatibility with the first arcane runtime. It still blocks the
++      // Magic input handler, while the direct-close fallback remains active.
++      try { native.setHdnMagicMenuBlocked?.(true); } catch (_) { /* noop */ }
++      if (!this.nativeApiFailureReported) {
++        this.nativeApiFailureReported = true;
++        logError(this,
++          "runtime without setHdnVanillaMenuPolicy; zero-frame authority unavailable");
++      }
++      return;
++    }
++
++    try {
++      const effectiveMask =
++        hdnVanillaMenuLeases.getEffectiveBlockedMask(now);
++      native.setHdnVanillaMenuPolicy(effectiveMask);
++      this.nativeApiFailureReported = false;
++      const rawState = native.getHdnVanillaMenuPolicyState?.();
++      const state = decodeHdnVanillaMenuPolicyState(rawState);
++      if (!isHdnVanillaNativeBarrierHealthy(state, effectiveMask)) {
++        if (!this.nativeBarrierFailureReported) {
++          this.nativeBarrierFailureReported = true;
++          logError(this, "native vanilla authority attestation failed", state);
++        }
++        return;
++      }
++
++      this.nativeBarrierFailureReported = false;
++      if (now - this.lastNativeStateLogAt >= NATIVE_STATE_LOG_MS) {
++        this.lastNativeStateLogAt = now;
++        logTrace(this, "native vanilla authority healthy", {
++          policyVersion: state?.policyVersion,
++          mask: state?.mask,
++          blockedShowCount: state?.blockedShowCount,
++          blockedInputCount: state?.blockedInputCount,
++          activeLeases: hdnVanillaMenuLeases.snapshot(now).length,
++        });
++      }
++    } catch (error) {
++      if (!this.nativeApiFailureReported) {
++        this.nativeApiFailureReported = true;
++        logError(this, "native vanilla authority apply failed", error);
++      }
++    }
++  }
++
++  private isPlayerReady(): boolean {
++    try {
++      if (!this.sp.Game.getPlayer?.()) return false;
++      for (const menu of [
++        "MainMenu",
++        "Main Menu",
++        "LoadingMenu",
++        "Loading Menu",
++        "FaderMenu",
++        "Fader Menu",
++        "RaceSex Menu",
++      ]) {
++        if (this.sp.Ui?.isMenuOpen?.(menu)) return false;
++      }
++      return true;
++    } catch (_) {
++      return false;
++    }
++  }
++
++  private reconcileVanillaProgression(now: number): void {
++    if (!this.isPlayerReady()) return;
++    this.lastProgressionAt = now;
++    this.progressionUrgent = false;
++
++    try {
++      const player = this.sp.Game.getPlayer?.();
++      const observedLevel = Number((player as any)?.getLevel?.());
++      if (Number.isFinite(observedLevel)) {
++        const expectedLevel =
++          hdnVanillaProgressionProjection.capturePlayerLevel(observedLevel);
++        if (observedLevel !== expectedLevel) {
++          (this.sp.Game as any).setPlayerLevel?.(expectedLevel);
++          logTrace(this, "repaired vanilla player-level drift", {
++            observed: observedLevel,
++            expected: expectedLevel,
++          });
++        }
++      }
++    } catch (error) {
++      logError(this, "failed to reconcile vanilla player level", error);
++    }
++
++    try {
++      this.sp.Game.setGameSettingFloat("fXPPerSkillRank", 0);
++    } catch (error) {
++      logError(this, "failed to freeze vanilla player XP multiplier", error);
++    }
++
++    try {
++      const currentExperience =
++        Number((this.sp.Game as any).getPlayerExperience?.()) || 0;
++      if (Math.abs(currentExperience) > 0.0001) {
++        (this.sp.Game as any).setPlayerExperience?.(0);
++        logTrace(this, "cleared vanilla player XP drift", currentExperience);
++      }
++    } catch (error) {
++      logError(this, "failed to reconcile vanilla player XP", error);
++    }
++
++    try {
++      const perkPoints = Number((this.sp.Game as any).getPerkPoints?.()) || 0;
++      if (perkPoints !== 0) {
++        (this.sp.Game as any).setPerkPoints?.(0);
++        logTrace(this, "cleared unmanaged vanilla perk points", perkPoints);
++      }
++    } catch (error) {
++      logError(this, "failed to reconcile vanilla perk points", error);
++    }
++
++    this.reconcileSkillProjection();
++  }
++
++  private reconcileSkillProjection(): void {
++    const before = hdnVanillaProgressionProjection.snapshot();
++    const capturing = Object.keys(before.skillLevels).length === 0;
++
++    for (const actorValue of VANILLA_SKILLS) {
++      try {
++        const avi = this.sp.ActorValueInfo.getActorValueInfoByID(actorValue);
++        if (!avi) continue;
++        const skill = avi as any;
++
++        // These global multipliers are the first barrier; restoring the
++        // captured level is the repair barrier for skill books/scripts.
++        skill.setSkillUseMult?.(0);
++        skill.setSkillOffsetMult?.(0);
++
++        const currentLevel = Number(skill.getSkillLevel?.());
++        if (!Number.isFinite(currentLevel)) continue;
++
++        const expected =
++          hdnVanillaProgressionProjection.captureSkillLevel(
++            Number(actorValue),
++            currentLevel,
++          );
++        if (Math.abs(currentLevel - expected) > 0.0001) {
++          skill.setSkillLevel?.(expected);
++          logTrace(this, "repaired vanilla skill drift", {
++            actorValue: Number(actorValue),
++            observed: currentLevel,
++            expected,
++          });
++        }
++
++        const currentSkillExperience =
++          Number(skill.getSkillExperience?.()) || 0;
++        if (Math.abs(currentSkillExperience) > 0.0001) {
++          skill.setSkillExperience?.(0);
++        }
++      } catch (error) {
++        logError(this, "failed to freeze vanilla skill", {
++          actorValue: Number(actorValue),
++          error: String(error),
++        });
++      }
++    }
++
++    if (capturing) {
++      logTrace(this, "captured frozen vanilla skill projection", {
++        skills: Object.keys(
++          hdnVanillaProgressionProjection.snapshot().skillLevels,
++        ).length,
++      });
++    }
++  }
++}
+-- 
+2.34.1
+
