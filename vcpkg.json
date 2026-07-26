@@ -42,6 +42,10 @@
       "platform": "windows"
     },
     {
+      "name": "directxtex",
+      "platform": "windows"
+    },
+    {
       "name": "mhook",
       "platform": "windows"
     },
