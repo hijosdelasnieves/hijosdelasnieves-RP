@@ -1,6 +1,12 @@
 #include "ItemPreviewApi.h"
 
 #include <DirectXTex.h>
+// Windows headers (pulled by DirectXTex and the platform PCH) define
+// __valid as a SAL macro. rsm-bsa uses that identifier in C++ templates, so
+// leave the Windows annotation namespace before including the archive API.
+#ifdef __valid
+#  undef __valid
+#endif
 #include <bsa/bsa.hpp>
 #include <objbase.h>
 

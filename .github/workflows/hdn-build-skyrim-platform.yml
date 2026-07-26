@@ -132,10 +132,10 @@ jobs:
           # HDN 2026-04-22 [build-speedup]: paralelismo MSBuild. El runner
           # windows-2022 tiene 4 vCPU. /m:4 + /nr:false evita daemons que
           # bloquean el cache upload posterior.
-          cmake --build build --config Release --target skyrim-platform `
+          & cmake --build build --config Release --target skyrim-platform `
             --parallel 4 `
-            -- /m:4 /nr:false /bl:build/skyrim-platform-msbuild.binlog `
-            /fl /flp:logfile=build/skyrim-platform-msbuild.log;verbosity=diagnostic
+            -- /m:4 /nr:false 2>&1 | Tee-Object -FilePath skyrim-platform-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # GitHub's downloadable job log endpoint requires an API session even
       # for this public repository. Preserve the compiler's actual diagnostic
@@ -147,8 +147,7 @@ jobs:
         with:
           name: skyrim-platform-build-diagnostics-${{ github.run_id }}
           path: |
-            build/skyrim-platform-msbuild.binlog
-            build/skyrim-platform-msbuild.log
+            skyrim-platform-build.log
           if-no-files-found: warn
           retention-days: 7
 
