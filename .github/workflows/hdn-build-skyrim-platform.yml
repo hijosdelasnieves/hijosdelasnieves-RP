@@ -134,7 +134,23 @@ jobs:
           # bloquean el cache upload posterior.
           cmake --build build --config Release --target skyrim-platform `
             --parallel 4 `
-            -- /m:4 /nr:false
+            -- /m:4 /nr:false /bl:build/skyrim-platform-msbuild.binlog `
+            /fl /flp:logfile=build/skyrim-platform-msbuild.log;verbosity=diagnostic
+
+      # GitHub's downloadable job log endpoint requires an API session even
+      # for this public repository. Preserve the compiler's actual diagnostic
+      # as an artifact whenever this step fails, so native release failures
+      # can be fixed from evidence instead of guessing.
+      - name: Upload native build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skyrim-platform-build-diagnostics-${{ github.run_id }}
+          path: |
+            build/skyrim-platform-msbuild.binlog
+            build/skyrim-platform-msbuild.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify SkyrimPlatform.dll exists
         shell: pwsh
