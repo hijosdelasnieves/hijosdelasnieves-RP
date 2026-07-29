@@ -70,17 +70,13 @@ void HdnAddUiMessage(RE::UIMessageQueue* queue,
     const auto nowMs = SteadyNowMs();
     const auto lastTweenHideAtMs =
       g_lastTweenHideAtMs.load(std::memory_order_acquire);
-    const bool tweenWasJustHidden =
-      lastTweenHideAtMs != 0 && nowMs >= lastTweenHideAtMs &&
-      nowMs - lastTweenHideAtMs <= 1000;
+    const bool tweenWasJustHidden = lastTweenHideAtMs != 0 &&
+      nowMs >= lastTweenHideAtMs && nowMs - lastTweenHideAtMs <= 1000;
     const bool tweenStillOpen =
       ui && ui->IsMenuOpen(RE::BSFixedString(tweenMenuName.data()));
     if (g_originalAddUiMessage && (tweenStillOpen || tweenWasJustHidden)) {
-      g_originalAddUiMessage(
-        queue,
-        RE::BSFixedString(tweenMenuName.data()),
-        RE::UI_MESSAGE_TYPE::kShow,
-        nullptr);
+      g_originalAddUiMessage(queue, RE::BSFixedString(tweenMenuName.data()),
+                             RE::UI_MESSAGE_TYPE::kShow, nullptr);
       g_tweenRecoveryCount.fetch_add(1, std::memory_order_relaxed);
       g_lastTweenHideAtMs.store(0, std::memory_order_release);
     }

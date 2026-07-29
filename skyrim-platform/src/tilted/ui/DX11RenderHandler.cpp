@@ -117,13 +117,12 @@ void DX11RenderHandler::Render(
       // MenuScreenData and CEF use render-target pixel coordinates. Keep the
       // cursor texture hotspot on that exact point at every resolution and
       // size ultrawide cursors from the limiting axis instead of width alone.
-      const auto cursorScale =
-        std::min(m_width / 1920.f, m_height / 1080.f);
-      m_pSpriteBatch->Draw(
-        m_pCursorTexture.Get(),
-        DirectX::SimpleMath::Vector2(m_cursorX, m_cursorY), nullptr,
-        DirectX::Colors::White, 0.f, DirectX::SimpleMath::Vector2(24.f, 25.f),
-        cursorScale);
+      const auto cursorScale = std::min(m_width / 1920.f, m_height / 1080.f);
+      m_pSpriteBatch->Draw(m_pCursorTexture.Get(),
+                           DirectX::SimpleMath::Vector2(m_cursorX, m_cursorY),
+                           nullptr, DirectX::Colors::White, 0.f,
+                           DirectX::SimpleMath::Vector2(24.f, 25.f),
+                           cursorScale);
     }
   }
 
