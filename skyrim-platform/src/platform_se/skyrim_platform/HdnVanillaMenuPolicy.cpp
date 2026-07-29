@@ -1,6 +1,7 @@
 #include "HdnVanillaMenuPolicy.h"
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 
 #include <mhook-lib/mhook.h>
@@ -16,6 +17,8 @@ std::atomic_bool g_queueHookInstalled{ false };
 std::atomic_bool g_inputFenceInstalled{ false };
 std::atomic_uint64_t g_blockedShowCount{ 0 };
 std::atomic_uint64_t g_blockedInputCount{ 0 };
+std::atomic_uint64_t g_tweenRecoveryCount{ 0 };
+std::atomic_uint64_t g_lastTweenHideAtMs{ 0 };
 std::mutex g_installMutex;
 AddUiMessage_t g_originalAddUiMessage = nullptr;
 
@@ -30,18 +33,57 @@ bool IsBlocked(const std::uint32_t flag) noexcept
   return flag != 0 && (g_mask.load(std::memory_order_acquire) & flag) != 0;
 }
 
+std::uint64_t SteadyNowMs() noexcept
+{
+  return static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch())
+      .count());
+}
+
 void HdnAddUiMessage(RE::UIMessageQueue* queue,
                      const RE::BSFixedString& menuName,
                      const RE::UI_MESSAGE_TYPE messageType,
                      RE::IUIMessageData* data)
 {
+  constexpr std::string_view tweenMenuName = "TweenMenu";
+  const auto menuNameView = AsView(menuName);
+  if (messageType == RE::UI_MESSAGE_TYPE::kHide &&
+      menuNameView == tweenMenuName) {
+    g_lastTweenHideAtMs.store(SteadyNowMs(), std::memory_order_release);
+  }
+
   // This is the zero-frame authority barrier. menuOpen is emitted only after
   // this queue has already created/started the Scaleform menu, which leaves a
   // P -> Enter race. Dropping kShow here means no MagicMenu instance, no
   // category focus and no Flash frame exist for a second input to capture.
   if (messageType == RE::UI_MESSAGE_TYPE::kShow &&
-      IsBlocked(MenuFlagForName(AsView(menuName)))) {
+      IsBlocked(MenuFlagForName(menuNameView))) {
     g_blockedShowCount.fetch_add(1, std::memory_order_relaxed);
+
+    // Selecting Magic or Skills from TweenMenu queues its close/fade before
+    // the destination kShow. Blocking only the destination leaves MenuMode
+    // active over a black frame. Requeue TweenMenu through the original
+    // function after that kHide; a direct hotkey does not open TAB because it
+    // has neither an open TweenMenu nor a recent TweenMenu hide.
+    auto* ui = RE::UI::GetSingleton();
+    const auto nowMs = SteadyNowMs();
+    const auto lastTweenHideAtMs =
+      g_lastTweenHideAtMs.load(std::memory_order_acquire);
+    const bool tweenWasJustHidden =
+      lastTweenHideAtMs != 0 && nowMs >= lastTweenHideAtMs &&
+      nowMs - lastTweenHideAtMs <= 1000;
+    const bool tweenStillOpen =
+      ui && ui->IsMenuOpen(RE::BSFixedString(tweenMenuName.data()));
+    if (g_originalAddUiMessage && (tweenStillOpen || tweenWasJustHidden)) {
+      g_originalAddUiMessage(
+        queue,
+        RE::BSFixedString(tweenMenuName.data()),
+        RE::UI_MESSAGE_TYPE::kShow,
+        nullptr);
+      g_tweenRecoveryCount.fetch_add(1, std::memory_order_relaxed);
+      g_lastTweenHideAtMs.store(0, std::memory_order_release);
+    }
     return;
   }
 
