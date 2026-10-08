@@ -1,0 +1,13 @@
+#pragma once
+#include <RE/Skyrim.h>
+#include <SKSE/SKSE.h>
+#include <REL/Relocation.h>
+#include <Windows.h>
+#include <d3d11.h>
+#include <dxgi.h>
+#include <wrl/client.h>
+#include <mutex>
+#include <chrono>
+#include <filesystem>
+#include <spdlog/sinks/basic_file_sink.h>
+#include "Policy.hpp"

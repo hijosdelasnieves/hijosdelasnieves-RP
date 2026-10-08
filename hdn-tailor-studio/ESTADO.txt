@@ -1,0 +1,25 @@
+HDN — Probador privado — PROTOTIPO EXPERIMENTAL, NO PUBLICADO
+
+Complemento adicional HdnTailorStudio.dll; NO sustituye SkyrimPlatform.
+Primera build limitada a Skyrim SE 1.5.97 y cadena Present de SkyrimPlatform.
+Desactivado por defecto: EnableExperimental=0. No instalar en PROD.
+
+Implementado: contrato Papyrus, sesiones con tokens no reutilizados, revisiones
+de selección, caducidad sin heartbeat, snapshot de la geometría del clon local,
+render UI3D separado del mundo, fondo negro anterior a CEF y giro independiente.
+El personaje real no se mueve, no se cambia su cámara, inventario ni equipo.
+El singleton de interfaz se presta SOLO por un render; si otro menú/escena lo
+usa se rechaza. No se limpian modelos de inventario ajenos ni se crean entradas
+sintéticas. Adquisición/liberación y cámara de interfaz se restauran por RAII.
+
+La CI solo compila, prueba políticas y genera artefactos; NO releases, NO tags,
+NO main, NO despliegue DEV/PROD, NO cambio al distribuidor global del runtime.
+
+Pendiente de aceptación Skyrim/Windows: actor completo/cara/tints, orientación
+frontal, render bajo CEF, piel/equipo sin efectos compartidos, rendimiento,
+menús nativos/restauración, 2 clientes simultáneos y 30 aperturas/cierres.
+GetStatus=3 significa render enviado; NO prueba de que haya píxeles visibles.
+Las pruebas C++ de política NO simulan el motor ni prueban el render.
+
+La integración del cliente y un paquete DEV sobre dev-current deben validarse
+por separado antes de publicar. Elara y compras autorizadas no cambian.

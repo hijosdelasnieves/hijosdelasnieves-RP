@@ -1,0 +1,74 @@
+name: HDN - Probador privado (solo artefactos)
+on:
+  push:
+    branches: [codex/probador-privado-dev-20261008]
+    paths: [hdn-tailor-studio/**, .github/workflows/hdn-tailor-studio-test.yml]
+permissions:
+  contents: read
+concurrency:
+  group: hdn-tailor-studio-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows-plugin:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: cb2981c4e03d421fa03b9bb5044cd1986180e7e4
+          path: studio-vcpkg
+      - uses: actions/cache@v4
+        with:
+          path: studio-build/vcpkg_installed
+          key: studio-vcpkg-windows-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+      - name: Bootstrap
+        shell: pwsh
+        run: ./studio-vcpkg/bootstrap-vcpkg.bat -disableMetrics
+      - name: Configure
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force studio-build | Out-Null
+          Set-Location studio-build
+          cmake ../hdn-tailor-studio -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/studio-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile and test
+        shell: pwsh
+        working-directory: studio-build
+        run: |
+          cmake --build . --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest -C Release --verbose
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile native Papyrus contract
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/Orvid/Caprica/releases/download/v0.3.0/Caprica.v0.3.0.7z -OutFile Caprica.7z
+          if ((Get-FileHash Caprica.7z -Algorithm SHA256).Hash.ToLower() -ne '0037e54cf3a1021e976278d9a637e8ae541aaf9ebeb8d274b6c2cfe32f4ee559') { throw 'Caprica checksum mismatch' }
+          7z x Caprica.7z -oCaprica
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $compiler = Get-ChildItem Caprica -Filter Caprica.exe -Recurse | Select-Object -First 1
+          if (-not $compiler) { throw 'Compiler missing' }
+          New-Item -ItemType Directory -Force studio-build/package/Data/Scripts | Out-Null
+          & $compiler.FullName --game skyrim --output studio-build/package/Data/Scripts hdn-tailor-studio/scripts/Source/HdnTailorStudio.psc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage test package (no deployment)
+        shell: pwsh
+        run: |
+          $package = 'studio-build/package'
+          $dll = Get-ChildItem "$package/Data/SKSE/Plugins" -Recurse -Filter HdnTailorStudio.dll | Select-Object -First 1
+          if (-not $dll) { throw 'DLL missing' }
+          Copy-Item $dll.FullName "$package/Data/SKSE/Plugins/HdnTailorStudio.dll" -ErrorAction SilentlyContinue
+          if (-not (Test-Path "$package/Data/Scripts/HdnTailorStudio.pex")) { throw 'PEX missing' }
+          Copy-Item hdn-tailor-studio/config/HdnTailorStudio.ini "$package/Data/SKSE/Plugins/"
+          Copy-Item hdn-tailor-studio/ESTADO.txt "$package/"
+          Copy-Item hdn-tailor-studio/scripts/Source "$package/Data/Scripts/" -Recurse
+          git rev-parse HEAD | Set-Content "$package/commit.txt"
+          Get-ChildItem "$package/Data" -Recurse -File | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize | Out-String -Width 240 | Set-Content "$package/checksums.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HdnTailorStudio-EXPERIMENTAL-${{ github.sha }}
+          path: studio-build/package/
+          retention-days: 14

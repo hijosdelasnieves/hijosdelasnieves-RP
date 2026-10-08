@@ -1,0 +1,5 @@
+{
+  "name": "hdn-tailor-studio",
+  "version-string": "0.1.0",
+  "dependencies": ["fmt", "spdlog", "rapidcsv"]
+}
