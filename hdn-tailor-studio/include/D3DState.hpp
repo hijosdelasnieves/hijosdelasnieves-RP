@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <d3d11.h>
 
 namespace hdn::studio {
 // Inventory's renderer is engine code. Preserve all graphics-pipeline state
