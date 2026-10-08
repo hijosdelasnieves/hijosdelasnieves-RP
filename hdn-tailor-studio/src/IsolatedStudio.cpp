@@ -5,6 +5,7 @@
 #include "PCH.hpp"
 #include "PixelProbe.hpp"
 #include "Studio.hpp"
+#include "SwapChainTable.hpp"
 #include <array>
 #include <cwctype>
 #include <d3dcompiler.h>
@@ -42,7 +43,7 @@ void* model = nullptr;
 bool enabled = false, hooked = false, dirty = false, probed = false;
 float renderedAspect = 0;
 Present nextPresent = nullptr;
-std::array<void*, 18> swapVtable{};
+std::array<void*, 41> swapVtable{};
 ComPtr<ID3D11Device> device;
 ComPtr<ID3D11DeviceContext> context;
 ComPtr<ID3D11VertexShader> vertexShader;
@@ -315,7 +316,7 @@ bool installHook()
     logger().warn("Unsupported Present chain; no studio installed");
     return false;
   }
-  std::copy_n(table, swapVtable.size(), swapVtable.begin());
+  std::copy_n(table, swapChainTableEntries(swap), swapVtable.begin());
   nextPresent = reinterpret_cast<Present>(table[8]);
   swapVtable[8] = reinterpret_cast<void*>(&present);
   return InterlockedCompareExchangePointer(

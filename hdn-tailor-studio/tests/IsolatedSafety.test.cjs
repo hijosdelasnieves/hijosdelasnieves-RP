@@ -26,6 +26,9 @@ check(mainTask.indexOf('actor->GetParentCell() == player->GetParentCell()') < ma
 check(studio.includes('return enabled && hooked ? 2 : 0;'));
 check(studio.indexOf('context->ClearRenderTargetView(target.Get(), black)') < studio.indexOf('if (!model ||'));
 check(studio.includes('return nextPresent(swap, interval, flags);'));
+check(studio.includes('std::array<void*, 41> swapVtable'));
+check(studio.includes('swapChainTableEntries(swap)'));
+check(read('include/SwapChainTable.hpp').includes('IDXGISwapChain4>(41)'));
 check(studio.includes('D3D11_MAP_FLAG_DO_NOT_WAIT'));
 check(framework.includes('depth > 64 || pose.names.size() >= 4096'));
 check(patch.includes('faceMorphActor = {};'));
