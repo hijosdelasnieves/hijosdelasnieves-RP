@@ -14,16 +14,27 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Test client contract
+        run: node hdn-tailor-studio/tests/StudioClient.test.cjs
       - name: Checkout pinned vcpkg
         uses: actions/checkout@v4
         with:
           repository: microsoft/vcpkg
           ref: cb2981c4e03d421fa03b9bb5044cd1986180e7e4
           path: studio-vcpkg
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: packages
         with:
           path: studio-build/vcpkg_installed
           key: studio-vcpkg-windows-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+      - uses: actions/cache/restore@v4
+        id: commonlib
+        with:
+          path: studio-build/_deps
+          key: studio-commonlib-windows-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
       - name: Bootstrap
         shell: pwsh
         run: ./studio-vcpkg/bootstrap-vcpkg.bat -disableMetrics
@@ -35,6 +46,7 @@ jobs:
           cmake ../hdn-tailor-studio -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/studio-vcpkg/scripts/buildsystems/vcpkg.cmake"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile and test
+        id: compile
         shell: pwsh
         working-directory: studio-build
         run: |
@@ -60,7 +72,8 @@ jobs:
           $package = 'studio-build/package'
           $dll = Get-ChildItem "$package/Data/SKSE/Plugins" -Recurse -Filter HdnTailorStudio.dll | Select-Object -First 1
           if (-not $dll) { throw 'DLL missing' }
-          Copy-Item $dll.FullName "$package/Data/SKSE/Plugins/HdnTailorStudio.dll" -ErrorAction SilentlyContinue
+          $destination = Join-Path (Resolve-Path "$package/Data/SKSE/Plugins").Path 'HdnTailorStudio.dll'
+          if ($dll.FullName -ne $destination) { Copy-Item $dll.FullName $destination -ErrorAction Stop }
           if (-not (Test-Path "$package/Data/Scripts/HdnTailorStudio.pex")) { throw 'PEX missing' }
           Copy-Item hdn-tailor-studio/config/HdnTailorStudio.ini "$package/Data/SKSE/Plugins/"
           Copy-Item hdn-tailor-studio/ESTADO.txt "$package/"
@@ -72,3 +85,13 @@ jobs:
           name: HdnTailorStudio-EXPERIMENTAL-${{ github.sha }}
           path: studio-build/package/
           retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.packages.outputs.cache-hit != 'true'
+        with:
+          path: studio-build/vcpkg_installed
+          key: studio-vcpkg-windows-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+      - uses: actions/cache/save@v4
+        if: always() && steps.commonlib.outputs.cache-hit != 'true'
+        with:
+          path: studio-build/_deps
+          key: studio-commonlib-windows-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}

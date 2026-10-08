@@ -24,6 +24,7 @@ if(HDN_BUILD_PLUGIN)
   add_commonlibsse_plugin(HdnTailorStudio AUTHOR "Hijos de las Nieves"
     USE_ADDRESS_LIBRARY SOURCES src/Plugin.cpp src/Studio.cpp)
   target_include_directories(HdnTailorStudio PRIVATE include)
+  target_compile_definitions(HdnTailorStudio PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_libraries(HdnTailorStudio PRIVATE d3d11 dxgi)
   target_precompile_headers(HdnTailorStudio PRIVATE include/PCH.hpp)
   set_target_properties(HdnTailorStudio PROPERTIES

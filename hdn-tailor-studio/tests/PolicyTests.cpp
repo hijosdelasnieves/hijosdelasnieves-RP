@@ -3,11 +3,16 @@
 #include <iostream>
 
 int checks = 0;
-void check(bool condition) {
+void check(bool condition)
+{
   ++checks;
-  if (!condition) { std::cerr << "Failed check " << checks << '\n'; std::exit(1); }
+  if (!condition) {
+    std::cerr << "Failed check " << checks << '\n';
+    std::exit(1);
+  }
 }
-int main() {
+int main()
+{
   using namespace hdn::studio;
   Policy p;
   check(!p.live(0, 0));
@@ -30,6 +35,12 @@ int main() {
   check(p.commit(first, 2, 101, false));
   check(p.status(first, 101) == Status::invalidModel);
   check(p.frame(first, 102, 750, 99));
+  check(p.viewport(first, 102, { 0.51f, 0.52f, 0.3f, 0.6f }));
+  check(!p.viewport(first, 102, { 0, 0, 0.3f, 0.6f }));
+  check(!p.viewport(first, 102, { 0.5f, 0.5f, 0, 0.6f }));
+  check(!p.viewport(
+    first, 102, { 0.5f, 0.5f, std::numeric_limits<float>::infinity(), 0.6f }));
+  check(!p.viewport(first + 1, 102, { 0.5f, 0.5f, 0.3f, 0.6f }));
   check(p.yaw() == 30 && p.zoom() == 1.35f);
   check(!p.frame(first, 102, std::numeric_limits<float>::quiet_NaN(), 1));
   check(!p.frame(first, 102, 0, std::numeric_limits<float>::infinity()));
@@ -43,13 +54,13 @@ int main() {
   check(p.live(second, 4001));
   check(p.end(second));
   check(!p.end(second));
-  for (float aspect : {0.6f, 1.0f, 1.7777778f, 2.4f, 3.55f}) {
-    auto rig = fit(90, aspect, 0.27f, 0.50f, 1);
+  for (float aspect : { 0.6f, 1.0f, 1.7777778f, 2.4f, 3.55f }) {
+    auto rig = fit(90, aspect, { 0.5f, 0.5f, 0.3f, 0.6f }, 1);
     check(std::isfinite(rig.x) && std::isfinite(rig.y) && rig.y < -90);
     check(rig.z == 0);
-    check(fit(90, aspect, 0.27f, 0.5f, 1.35f).y > rig.y);
+    check(fit(90, aspect, { 0.5f, 0.5f, 0.3f, 0.6f }, 1.35f).y > rig.y);
   }
-  check(fit(0, 1, 0.5f, 0.5f, 1).radius == 0);
-  check(fit(90, 0, 0.5f, 0.5f, 1).radius == 0);
+  check(fit(0, 1, {}, 1).radius == 0);
+  check(fit(90, 0, {}, 1).radius == 0);
   std::cout << checks << " policy checks passed (not a Skyrim render test)\n";
 }

@@ -8,6 +8,8 @@ Implementado: contrato Papyrus, sesiones con tokens no reutilizados, revisiones
 de selección, caducidad sin heartbeat, snapshot de la geometría del clon local,
 render UI3D separado del mundo, fondo negro anterior a CEF y giro independiente.
 El personaje real no se mueve, no se cambia su cámara, inventario ni equipo.
+Se oculta SOLO la raíz 3D del clon local dedicado, conservando/restaurando su
+estado previo al cerrar; no se ocultan jugadores ni NPCs reales.
 El singleton de interfaz se presta SOLO por un render; si otro menú/escena lo
 usa se rechaza. No se limpian modelos de inventario ajenos ni se crean entradas
 sintéticas. Adquisición/liberación y cámara de interfaz se restauran por RAII.
