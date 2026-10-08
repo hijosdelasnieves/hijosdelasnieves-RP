@@ -1,5 +1,6 @@
 #include "PixelProbe.hpp"
 #include "Policy.hpp"
+#include "Runtime.hpp"
 #include <array>
 #include <cstdlib>
 #include <iostream>
@@ -16,6 +17,13 @@ void check(bool condition)
 int main()
 {
   using namespace hdn::studio;
+  check(supportedRuntime({ 1, 5, 97, 0 }));
+  check(supportedRuntime({ 1, 6, 1170, 0 }));
+  check(!supportedRuntime({ 1, 6, 1170, 1 }));
+  check(!supportedRuntime({ 1, 6, 1179, 0 }));
+  check(!supportedRuntime({ 1, 6, 1130, 0 }));
+  check(!supportedRuntime({ 1, 7, 104, 0 }));
+  check(!supportedRuntime({ 1, 4, 15, 0 }));
   Policy p;
   check(!p.live(0, 0));
   const auto first = p.begin(100);

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
-project(HdnTailorStudio VERSION 0.1.0 LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
+project(HdnTailorStudio VERSION 0.1.1 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(HDN_BUILD_PLUGIN "Build the experimental Windows SKSE plugin" ${WIN32})
 enable_testing()
@@ -17,12 +17,13 @@ if(HDN_BUILD_PLUGIN)
   set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
   set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
   FetchContent_Declare(commonlib
-    GIT_REPOSITORY https://github.com/CharmedBaryon/CommonLibSSE.git
-    GIT_TAG c4ab853d095e81e3390b282d7ba01ab2f24ebf25)
+    GIT_REPOSITORY https://github.com/alandtse/CommonLibSSE-NG.git
+    GIT_TAG 94faaed0c60eddd8347767f2d4d29a97c93bde8c)
   FetchContent_MakeAvailable(commonlib)
   include(${commonlib_SOURCE_DIR}/cmake/CommonLibSSE.cmake)
   add_commonlibsse_plugin(HdnTailorStudio AUTHOR "Hijos de las Nieves"
-    USE_ADDRESS_LIBRARY SOURCES src/Plugin.cpp src/Studio.cpp)
+    STRUCT_DEPENDENT COMPATIBLE_RUNTIMES 1.5.97 1.6.1170
+    SOURCES src/Plugin.cpp src/Studio.cpp)
   target_include_directories(HdnTailorStudio PRIVATE include)
   target_compile_definitions(HdnTailorStudio PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_libraries(HdnTailorStudio PRIVATE d3d11 dxgi)
@@ -30,4 +31,10 @@ if(HDN_BUILD_PLUGIN)
   set_target_properties(HdnTailorStudio PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/package/Data/SKSE/Plugins"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/package/Data/SKSE/Plugins")
+  add_executable(studio-loader-tests tests/LoaderTests.cpp)
+  add_dependencies(studio-loader-tests HdnTailorStudio)
+  add_test(NAME studio-loader-disabled
+    COMMAND studio-loader-tests "$<TARGET_FILE:HdnTailorStudio>" "disabled")
+  add_test(NAME studio-loader-missing-address-library
+    COMMAND studio-loader-tests "$<TARGET_FILE:HdnTailorStudio>" "missing-library")
 endif()

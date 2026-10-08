@@ -2,6 +2,7 @@
 #include "D3DState.hpp"
 #include "PCH.hpp"
 #include "PixelProbe.hpp"
+#include "Runtime.hpp"
 #include <array>
 #include <cwctype>
 
@@ -107,10 +108,7 @@ public:
   }
   void attach()
   {
-    using Begin =
-      void (*)(RE::Inventory3DManager*, RE::INTERFACE_LIGHT_SCHEME);
-    static REL::Relocation<Begin> begin{ RELOCATION_ID(50881, 51754) };
-    begin(inventory_, RE::INTERFACE_LIGHT_SCHEME::kInventory);
+    inventory_->Begin3D(RE::INTERFACE_LIGHT_SCHEME::kInventory);
     begun_ = true;
     scene_->AttachChild(node_, RE::INTERFACE_LIGHT_SCHEME::kInventory);
     attached_ = true;
@@ -123,9 +121,7 @@ public:
     if (attached_)
       scene_->DetachChild(node_);
     if (begun_) {
-      using End = void (*)(RE::Inventory3DManager*);
-      static REL::Relocation<End> end{ RELOCATION_ID(50883, 51756) };
-      end(inventory_);
+      inventory_->End3D();
     }
     scene_->SetCameraPosition(cameraPos_);
     scene_->SetCameraRotate(cameraRot_);
@@ -285,7 +281,10 @@ HRESULT STDMETHODCALLTYPE present(IDXGISwapChain* swap, UINT interval,
 bool installHook()
 {
   auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
-  auto* swap = renderer ? renderer->data.renderWindows[0].swapChain : nullptr;
+  auto* swap = renderer
+    ? reinterpret_cast<IDXGISwapChain*>(
+        renderer->GetRuntimeData().renderWindows[0].swapChain)
+    : nullptr;
   if (!swap)
     return false;
   auto*** object = reinterpret_cast<void***>(swap);
@@ -350,7 +349,11 @@ bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
   if (!source || !std::isfinite(source->worldBound.radius) ||
       source->worldBound.radius <= 0)
     return policy.commit(token, revision, timestamp, false), false;
-  RE::NiPointer<RE::NiAVObject> copy(source->Clone());
+  // The updated SDK exposes Clone on NiObject. Retain ownership even if
+  // the engine refuses to return a scene object; never cast blindly.
+  RE::NiPointer<RE::NiObject> cloned(source->Clone());
+  RE::NiPointer<RE::NiAVObject> copy(
+    cloned ? netimmerse_cast<RE::NiAVObject*>(cloned.get()) : nullptr);
   if (!copy || copy.get() == source || copy->parent) {
     policy.commit(token, revision, timestamp, false);
     return false;
@@ -435,9 +438,9 @@ void onMessage(SKSE::MessagingInterface::Message* message)
       std::filesystem::absolute("Data/SKSE/Plugins/HdnTailorStudio.ini");
     enabled = GetPrivateProfileIntW(L"Studio", L"EnableExperimental", 0,
                                     config.c_str()) == 1;
-    // First proof-of-concept is deliberately restricted to HDN's SE 1.5.97.
-    enabled =
-      enabled && REL::Module::get().version() == SKSE::RUNTIME_SSE_1_5_97;
+    const auto runtime = REL::Module::get().version();
+    enabled = enabled &&
+      supportedRuntime({ runtime[0], runtime[1], runtime[2], runtime[3] });
     hooked = enabled && installHook();
     logger().info("Experimental enabled={} hook={} API={}", enabled, hooked,
                   apiVersion(nullptr));

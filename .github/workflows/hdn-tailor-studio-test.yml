@@ -36,7 +36,7 @@ jobs:
         id: commonlib
         with:
           path: studio-build/_deps
-          key: studio-commonlib-static-md-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+          key: studio-commonlib-static-md-94faaed-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
       - name: Bootstrap
         shell: pwsh
         run: ./studio-vcpkg/bootstrap-vcpkg.bat -disableMetrics
@@ -105,4 +105,4 @@ jobs:
         if: always() && steps.commonlib.outputs.cache-hit != 'true'
         with:
           path: studio-build/_deps
-          key: studio-commonlib-static-md-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+          key: studio-commonlib-static-md-94faaed-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
