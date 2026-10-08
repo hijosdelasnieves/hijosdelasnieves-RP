@@ -1,6 +1,7 @@
 HDN — Probador privado — PROTOTIPO EXPERIMENTAL, NO PUBLICADO
 
 Complemento adicional HdnTailorStudio.dll; NO sustituye SkyrimPlatform.
+fmt/spdlog enlazados estáticamente: no instalar ni sustituir sus DLL compartidas.
 Primera build limitada a Skyrim SE 1.5.97 y cadena Present de SkyrimPlatform.
 Desactivado por defecto: EnableExperimental=0. No instalar en PROD.
 

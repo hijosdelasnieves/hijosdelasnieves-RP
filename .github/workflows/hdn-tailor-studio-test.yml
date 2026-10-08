@@ -31,12 +31,12 @@ jobs:
         id: packages
         with:
           path: studio-build/vcpkg_installed
-          key: studio-vcpkg-windows-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+          key: studio-vcpkg-static-md-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
       - uses: actions/cache/restore@v4
         id: commonlib
         with:
           path: studio-build/_deps
-          key: studio-commonlib-windows-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+          key: studio-commonlib-static-md-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
       - name: Bootstrap
         shell: pwsh
         run: ./studio-vcpkg/bootstrap-vcpkg.bat -disableMetrics
@@ -45,7 +45,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force studio-build | Out-Null
           Set-Location studio-build
-          cmake ../hdn-tailor-studio -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/studio-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          cmake ../hdn-tailor-studio -G "Visual Studio 17 2022" -A x64 -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/studio-vcpkg/scripts/buildsystems/vcpkg.cmake"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile and test
         id: compile
@@ -78,6 +78,13 @@ jobs:
           if (-not $dll) { throw 'DLL missing' }
           $destination = Join-Path (Resolve-Path "$package/Data/SKSE/Plugins").Path 'HdnTailorStudio.dll'
           if ($dll.FullName -ne $destination) { Copy-Item $dll.FullName $destination -ErrorAction Stop }
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $dumpbin = & $vswhere -latest -products '*' -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { throw 'Import inspection tool missing' }
+          $imports = & $dumpbin /dependents $destination
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($imports -match '(?i)\b(fmt|spdlog)\.dll\b') { throw 'Private plugin must not load shared fmt/spdlog DLLs' }
+          $imports | Set-Content "$package/imports.txt"
           if (-not (Test-Path "$package/Data/Scripts/HdnTailorStudio.pex")) { throw 'PEX missing' }
           Copy-Item hdn-tailor-studio/config/HdnTailorStudio.ini "$package/Data/SKSE/Plugins/"
           Copy-Item hdn-tailor-studio/ESTADO.txt "$package/"
@@ -93,9 +100,9 @@ jobs:
         if: always() && steps.packages.outputs.cache-hit != 'true'
         with:
           path: studio-build/vcpkg_installed
-          key: studio-vcpkg-windows-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+          key: studio-vcpkg-static-md-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
       - uses: actions/cache/save@v4
         if: always() && steps.commonlib.outputs.cache-hit != 'true'
         with:
           path: studio-build/_deps
-          key: studio-commonlib-windows-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}
+          key: studio-commonlib-static-md-c4ab853-cb2981-${{ hashFiles('hdn-tailor-studio/vcpkg.json') }}

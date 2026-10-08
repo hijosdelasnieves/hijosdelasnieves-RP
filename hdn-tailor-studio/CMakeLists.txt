@@ -28,5 +28,6 @@ if(HDN_BUILD_PLUGIN)
   target_link_libraries(HdnTailorStudio PRIVATE d3d11 dxgi)
   target_precompile_headers(HdnTailorStudio PRIVATE include/PCH.hpp)
   set_target_properties(HdnTailorStudio PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/package/Data/SKSE/Plugins")
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/package/Data/SKSE/Plugins"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/package/Data/SKSE/Plugins")
 endif()
