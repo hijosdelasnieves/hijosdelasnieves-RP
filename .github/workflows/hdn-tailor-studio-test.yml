@@ -109,6 +109,10 @@ jobs:
             git -C "studio-build/_deps/$dependency" archive --format=tar -o $sourceArchive HEAD
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          # CommonLib's tracked tree references OpenVR as a submodule.
+          $openvrArchive = Join-Path $sources.FullName 'commonlib-openvr.tar'
+          git -C studio-build/_deps/commonlib-src/extern/openvr archive --format=tar -o $openvrArchive HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           foreach ($dependency in @('directxtex','directxtk','fmt','spdlog','rapidcsv')) {
             $tree = "studio-vcpkg/buildtrees/$dependency/src"
             if (Test-Path $tree) { Copy-Item $tree "$sources/$dependency" -Recurse }
