@@ -103,6 +103,12 @@ public:
         status_ == Status::busy)
       status_ = available ? Status::rendered : Status::busy;
   }
+  void captureFailed()
+  {
+    if (status_ == Status::captured || status_ == Status::rendered ||
+        status_ == Status::busy)
+      status_ = Status::invalidModel;
+  }
   Status status(std::int32_t token, std::uint64_t now) const
   {
     return live(token, now) ? status_ : Status::closed;

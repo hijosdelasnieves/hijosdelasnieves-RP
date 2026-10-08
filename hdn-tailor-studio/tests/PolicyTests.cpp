@@ -1,4 +1,6 @@
+#include "PixelProbe.hpp"
 #include "Policy.hpp"
+#include <array>
 #include <cstdlib>
 #include <iostream>
 
@@ -54,6 +56,25 @@ int main()
   check(p.live(second, 4001));
   check(p.end(second));
   check(!p.end(second));
+  const auto third = p.begin(5000);
+  check(p.select(third, 1, 5000) && p.commit(third, 1, 5000, true));
+  p.captureFailed();
+  check(p.status(third, 5000) == Status::invalidModel);
+  p.rendered(true);
+  check(p.status(third, 5000) == Status::invalidModel);
+  std::array<std::uint8_t, 16 * 4> pixels{};
+  check(!hasVisiblePixels(nullptr, 64, 16, 1));
+  check(!hasVisiblePixels(pixels.data(), 60, 16, 1));
+  check(!hasVisiblePixels(pixels.data(), 64, 16, 1));
+  for (unsigned i = 0; i < 16; ++i)
+    pixels[i * 4 + 3] = 255;
+  check(!hasVisiblePixels(pixels.data(), 64, 16, 1));
+  for (unsigned i = 0; i < 15; ++i)
+    pixels[i * 4] = 10;
+  check(!hasVisiblePixels(pixels.data(), 64, 16, 1));
+  pixels[15 * 4] = 10;
+  check(hasVisiblePixels(pixels.data(), 64, 16, 1));
+  check(hasVisiblePixels(pixels.data(), 32, 8, 2));
   for (float aspect : { 0.6f, 1.0f, 1.7777778f, 2.4f, 3.55f }) {
     auto rig = fit(90, aspect, { 0.5f, 0.5f, 0.3f, 0.6f }, 1);
     check(std::isfinite(rig.x) && std::isfinite(rig.y) && rig.y < -90);

@@ -1,6 +1,7 @@
 #include "Studio.hpp"
 #include "D3DState.hpp"
 #include "PCH.hpp"
+#include "PixelProbe.hpp"
 #include <array>
 #include <cwctype>
 
@@ -16,6 +17,7 @@ RE::NiPointer<RE::NiAVObject> hiddenSource;
 bool sourceWasCulled = false;
 RE::NiPoint3 center{};
 float radius = 0;
+bool needsPixelProbe = false;
 bool enabled = false, hooked = false;
 Present nextPresent = nullptr;
 // Per-instance vtable, not a global detour of every D3D11 swap chain.
@@ -138,6 +140,50 @@ public:
   }
 };
 
+bool probe(ID3D11Device* device, ID3D11DeviceContext* context,
+           ID3D11Texture2D* surface, const D3D11_TEXTURE2D_DESC& source)
+{
+  if (source.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+      source.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB &&
+      source.Format != DXGI_FORMAT_B8G8R8A8_UNORM &&
+      source.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+    return false;
+  const auto bounds = policy.viewport();
+  const auto left =
+    static_cast<UINT>((bounds.x - bounds.width / 2) * source.Width);
+  const auto top =
+    static_cast<UINT>((bounds.y - bounds.height / 2) * source.Height);
+  const auto right =
+    std::min(source.Width,
+             static_cast<UINT>((bounds.x + bounds.width / 2) * source.Width));
+  const auto bottom = std::min(
+    source.Height,
+    static_cast<UINT>((bounds.y + bounds.height / 2) * source.Height));
+  if (right <= left || bottom <= top)
+    return false;
+  auto description = source;
+  description.Width = right - left;
+  description.Height = bottom - top;
+  description.MipLevels = description.ArraySize = 1;
+  description.Usage = D3D11_USAGE_STAGING;
+  description.BindFlags = description.MiscFlags = 0;
+  description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  if (FAILED(device->CreateTexture2D(&description, nullptr,
+                                     staging.GetAddressOf())))
+    return false;
+  const D3D11_BOX box{ left, top, 0, right, bottom, 1 };
+  context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, surface, 0, &box);
+  D3D11_MAPPED_SUBRESOURCE mapped{};
+  if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped)))
+    return false;
+  const bool visible =
+    hasVisiblePixels(static_cast<const std::uint8_t*>(mapped.pData),
+                     mapped.RowPitch, description.Width, description.Height);
+  context->Unmap(staging.Get(), 0);
+  return visible;
+}
+
 void draw(IDXGISwapChain* swap)
 {
   std::scoped_lock lock(mutex);
@@ -203,8 +249,20 @@ void draw(IDXGISwapChain* swap)
   // Begin3D may have changed the target; explicitly re-bind before rendering.
   context->OMSetRenderTargets(1, &rawTarget, nullptr);
   inventory->Render();
-  // This is render submission, NOT proof of visible pixels. Visual acceptance
-  // (skin, tint, outfit, clipping, ordering) is deliberately still required.
+  // Read back once per selection, before the CEF presenter runs. Native menu
+  // renderer gates can otherwise make Render() silently submit NO pixels.
+  if (needsPixelProbe) {
+    needsPixelProbe = false;
+    if (!probe(device.Get(), context.Get(), surface.Get(), description)) {
+      logger().warn("No visible geometry after native render; refusing ready "
+                    "status (menu render gate or unsupported surface)");
+      policy.captureFailed();
+      return;
+    }
+    logger().info("First-frame geometry pixels detected; Skyrim visual "
+                  "acceptance still required");
+  }
+  // Pixels alone do not prove correct skin, tint, outfit, clipping or facing.
   policy.rendered(true);
 }
 
@@ -315,6 +373,7 @@ bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
   center = copy->worldBound.center;
   radius = copy->worldBound.radius;
   model = std::move(copy);
+  needsPixelProbe = true;
   hiddenSource.reset(source);
   sourceWasCulled = source->GetAppCulled();
   source->SetAppCulled(true);

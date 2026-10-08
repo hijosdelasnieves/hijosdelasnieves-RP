@@ -20,7 +20,13 @@ NO main, NO despliegue DEV/PROD, NO cambio al distribuidor global del runtime.
 Pendiente de aceptación Skyrim/Windows: actor completo/cara/tints, orientación
 frontal, render bajo CEF, piel/equipo sin efectos compartidos, rendimiento,
 menús nativos/restauración, 2 clientes simultáneos y 30 aperturas/cierres.
-GetStatus=3 significa render enviado; NO prueba de que haya píxeles visibles.
+GetStatus=3 exige detectar píxeles no negros en el primer render de selección,
+antes de CEF. NO prueba de calidad, prenda correcta ni orientación frontal.
+La sonda lee una región GPU una vez por selección (posible pausa breve).
+Solo admite superficies RGBA/BGRA8; las demás fallan de forma cerrada.
+Riesgo conocido pendiente: Inventory3DManager puede no dibujar fuera del
+estado de menú pausado; no se pausa ni se modifica el estado global para
+forzarlo. Si ocurre, la sonda rechaza la vista en vez de anunciarla lista.
 Las pruebas C++ de política NO simulan el motor ni prueban el render.
 
 La integración del cliente y un paquete DEV sobre dev-current deben validarse
