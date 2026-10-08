@@ -1,6 +1,5 @@
 #pragma once
 #include "Policy.hpp"
-using namespace std::literals;
 #include <RE/Skyrim.h>
 #include <REL/Relocation.h>
 #include <SKSE/SKSE.h>
@@ -11,4 +10,7 @@ using namespace std::literals;
 #include <filesystem>
 #include <mutex>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <string_view>
 #include <wrl/client.h>
+
+using namespace std::string_view_literals;
