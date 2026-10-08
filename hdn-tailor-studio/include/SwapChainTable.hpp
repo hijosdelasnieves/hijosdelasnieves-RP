@@ -16,10 +16,10 @@ inline size_t swapChainTableEntries(IDXGISwapChain* swap)
       ? entries
       : size_t{ 0 };
   };
-  return std::max({ size_t{ 18 },
-                    count.template operator()<IDXGISwapChain1>(29),
-                    count.template operator()<IDXGISwapChain2>(36),
-                    count.template operator()<IDXGISwapChain3>(40),
-                    count.template operator()<IDXGISwapChain4>(41) });
+  return (std::max)({ size_t{ 18 },
+                      count.template operator()<IDXGISwapChain1>(29),
+                      count.template operator()<IDXGISwapChain2>(36),
+                      count.template operator()<IDXGISwapChain3>(40),
+                      count.template operator()<IDXGISwapChain4>(41) });
 }
 }
