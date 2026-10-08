@@ -1,4 +1,5 @@
-Scriptname HdnTailorStudio
+; Caprica requires an explicit Native class marker for plugin-defined scripts.
+Scriptname HdnTailorStudio Hidden Native
 
 Int Function ApiVersion() Global Native
 Int Function BeginSession() Global Native
