@@ -13,7 +13,8 @@
 namespace {
 int checks = 0;
 int interfaceCalls = 0;
-void check(bool value)
+void
+check(bool value)
 {
   ++checks;
   if (!value) {
@@ -21,11 +22,13 @@ void check(bool value)
     std::exit(1);
   }
 }
-constexpr std::uint32_t pack(unsigned major, unsigned minor, unsigned patch)
+constexpr std::uint32_t
+pack(unsigned major, unsigned minor, unsigned patch)
 {
   return (major << 24) | (minor << 16) | (patch << 4);
 }
-void* query(std::uint32_t)
+void*
+query(std::uint32_t)
 {
   ++interfaceCalls;
   return nullptr;
@@ -49,26 +52,32 @@ struct PluginInfo
 };
 }
 
-int main(int argc, char** argv)
+int
+main(int argc, char** argv)
 {
-  check(argc == 3);
+  check(argc == 3 || argc == 4);
   const auto dllPath = std::filesystem::absolute(argv[1]);
   const auto previous = std::filesystem::current_path();
-  const auto sandbox = std::filesystem::temp_directory_path() /
+  const auto sandbox =
+    std::filesystem::temp_directory_path() /
     ("hdn-studio-loader-" + std::to_string(GetCurrentProcessId()));
   check(!std::filesystem::exists(sandbox));
   std::filesystem::create_directories(sandbox / "Data/SKSE/Plugins");
   std::filesystem::current_path(sandbox);
   const std::string mode(argv[2]);
   const bool missingLibrary = mode == "missing-library";
+  const bool isolatedMissing = mode == "isolated-missing-library";
   const bool quarantined = mode == "quarantined" || mode == "quarantined-crlf";
-  check(missingLibrary || quarantined || mode == "disabled");
+  check(missingLibrary || isolatedMissing || quarantined ||
+        mode == "disabled");
   {
     std::ofstream config("Data/SKSE/Plugins/HdnTailorStudio.ini",
                          std::ios::binary);
     const auto newline = mode == "quarantined-crlf" ? "\r\n" : "\n";
     config << "[Studio]" << newline
            << "EnableExperimental=" << (missingLibrary || quarantined ? 1 : 0)
+           << newline
+           << "EnableIsolatedMeshBackend=" << (isolatedMissing ? 1 : 0)
            << newline;
   }
   if (quarantined) {
@@ -94,7 +103,7 @@ int main(int argc, char** argv)
     GetProcAddress(module, "SKSEPlugin_Version"));
   check(load && pluginQuery && metadata);
   check(metadata[0] == 1);
-  check(metadata[1] == pack(0, 1, 3));
+  check(metadata[1] == pack(0, 2, 0));
   const auto versions = metadata + 0x30C / sizeof(std::uint32_t);
   check(versions[0] == pack(1, 5, 97));
   check(versions[1] == pack(1, 6, 1170));
@@ -105,14 +114,17 @@ int main(int argc, char** argv)
   check((metadata[0x304 / 4] & 1) == 0);
   PluginInfo info{};
   check(pluginQuery(nullptr, &info));
-  check(info.version == 1 && std::string(info.name) == "HdnTailorStudio");
-  check(info.pluginVersion == pack(0, 1, 3));
+  check(info.version == 1 &&
+        std::string(info.name) == (argc == 4 ? argv[3] : "HdnTailorStudio"));
+  check(info.pluginVersion == pack(0, 2, 0));
   check(!load(nullptr));
   LoaderInterface fixture;
   check(load(&fixture)); // The version which previously failed in game.
   fixture.runtimeVersion = pack(1, 5, 97);
   check(load(&fixture));
-  for (auto version : { pack(1, 6, 1130), pack(1, 6, 1179), pack(1, 7, 104),
+  for (auto version : { pack(1, 6, 1130),
+                        pack(1, 6, 1179),
+                        pack(1, 7, 104),
                         pack(1, 4, 15) }) {
     fixture.runtimeVersion = version;
     check(!load(&fixture));

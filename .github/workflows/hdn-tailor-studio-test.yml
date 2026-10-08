@@ -22,6 +22,7 @@ jobs:
           node hdn-tailor-studio/tests/StudioClient.test.cjs
           node hdn-tailor-studio/tests/Viewport.test.cjs
           node hdn-tailor-studio/tests/SafetyGates.test.cjs
+          node hdn-tailor-studio/tests/IsolatedSafety.test.cjs
       - name: Checkout pinned vcpkg
         uses: actions/checkout@v4
         with:
@@ -46,7 +47,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force studio-build | Out-Null
           Set-Location studio-build
-          cmake ../hdn-tailor-studio -G "Visual Studio 17 2022" -A x64 -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/studio-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          cmake ../hdn-tailor-studio -G "Visual Studio 17 2022" -A x64 -DHDN_BUILD_ISOLATED=ON -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/studio-vcpkg/scripts/buildsystems/vcpkg.cmake"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile and test
         id: compile
@@ -86,9 +87,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($imports -match '(?i)\b(fmt|spdlog)\.dll\b') { throw 'Private plugin must not load shared fmt/spdlog DLLs' }
           $imports | Set-Content "$package/imports.txt"
+          $meshDll = Join-Path (Resolve-Path "$package/Data/SKSE/Plugins").Path 'MeshRenderingFramework.dll'
+          if (-not (Test-Path $meshDll)) { throw 'Independent renderer DLL missing' }
+          $meshImports = & $dumpbin /dependents $meshDll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($meshImports -match '(?i)\b(fmt|spdlog|DirectXTex|nifly)\.dll\b') { throw 'Renderer has unexpected dynamic dependency' }
+          $meshImports | Set-Content "$package/mesh-imports.txt"
           if (-not (Test-Path "$package/Data/Scripts/HdnTailorStudio.pex")) { throw 'PEX missing' }
           Copy-Item hdn-tailor-studio/config/HdnTailorStudio.ini "$package/Data/SKSE/Plugins/"
           Copy-Item hdn-tailor-studio/ESTADO.txt "$package/"
+          Copy-Item hdn-tailor-studio/THIRD-PARTY.txt "$package/"
+          # Distribute corresponding source WITH the GPL binaries, including
+          # modified core, pins, build/installation scripts and dependency licenses.
+          $sources = New-Item -ItemType Directory -Force studio-build/corresponding-source
+          Copy-Item hdn-tailor-studio "$sources/hdn-tailor-studio" -Recurse
+          Copy-Item studio-build/hdn-mesh-core "$sources/modified-mesh-core" -Recurse
+          foreach ($dependency in @('meshframework-src','nifly-src','commonlib-src')) {
+            Copy-Item "studio-build/_deps/$dependency" "$sources/$dependency" -Recurse
+          }
+          Copy-Item .github/workflows/hdn-tailor-studio-test.yml "$sources/build-workflow.yml"
+          Compress-Archive -Path "$sources/*" -DestinationPath "$package/corresponding-source.zip"
           Copy-Item hdn-tailor-studio/scripts/Source "$package/Data/Scripts/" -Recurse
           git rev-parse HEAD | Set-Content "$package/commit.txt"
           Get-ChildItem "$package/Data" -Recurse -File | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize | Out-String -Width 240 | Set-Content "$package/checksums.txt"

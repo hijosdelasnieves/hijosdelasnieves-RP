@@ -1,5 +1,5 @@
 {
   "name": "hdn-tailor-studio",
-  "version-string": "0.1.1",
-  "dependencies": ["fmt", "spdlog", "rapidcsv", "directxtk"]
+  "version-string": "0.2.0",
+  "dependencies": ["fmt", "spdlog", "rapidcsv", "directxtk", "directxtex"]
 }

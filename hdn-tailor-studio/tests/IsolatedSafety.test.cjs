@@ -1,0 +1,37 @@
+'use strict';
+// Source contracts, not in-game validation. Old safety tests are retained too.
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
+const loader = read('src/IsolatedPlugin.cpp');
+const studio = read('src/IsolatedStudio.cpp');
+const framework = read('src/FrameworkPlugin.cpp');
+const patch = read('cmake/PatchFramework.cmake');
+const build = read('cmake/Framework.cmake');
+let n = 0;
+const check = value => { n++; assert(value); };
+check(read('include/BackendSafety.hpp').includes('privateBackendValidated = false;'));
+for (const text of [studio, framework]) {
+  check(!/->Clone\(|SetAppCulled\(|Clear3D\(|Inventory3DManager|UI3DSceneManager/.test(text));
+  check(!/SetCameraTarget\(|SetPosition\(|SetAlpha\(|EquipItem\(/.test(text));
+}
+check(loader.indexOf('EnableIsolatedMeshBackend') < loader.indexOf('SKSE::Init'));
+check(loader.indexOf('is_regular_file(library)') < loader.indexOf('SKSE::Init'));
+check(studio.includes('AddTask([token, revision, id]'));
+const mainTask = studio.slice(studio.indexOf('AddTask([token, revision, id]'));
+check(mainTask.indexOf('policy.live(token, now())') < mainTask.indexOf('LookupByID'));
+check(mainTask.indexOf('actor != player') < mainTask.indexOf('framework.capture(actor)'));
+check(mainTask.indexOf('actor->GetParentCell() == player->GetParentCell()') < mainTask.indexOf('framework.capture(actor)'));
+check(studio.includes('return enabled && hooked ? 2 : 0;'));
+check(studio.indexOf('context->ClearRenderTargetView(target.Get(), black)') < studio.indexOf('if (!model ||'));
+check(studio.includes('return nextPresent(swap, interval, flags);'));
+check(studio.includes('D3D11_MAP_FLAG_DO_NOT_WAIT'));
+check(framework.includes('depth > 64 || pose.names.size() >= 4096'));
+check(patch.includes('faceMorphActor = {};'));
+check(patch.includes('std::chrono::milliseconds(250)'));
+check(patch.includes('stream.stream->totalSize > 64 * 1024 * 1024'));
+check(!/src\/plugin\.cpp|src\/UI\.cpp|src\/Hooks\.cpp/.test(build));
+check(build.includes('c92dd6a71b7a8e71fd9f1d5a76f82e2b14c22833'));
+check(build.includes('cca0a770094bb962fb28ea1fec5ea903e68fda8e'));
+console.log(`${n} isolated source contracts passed; NOT Skyrim render acceptance`);

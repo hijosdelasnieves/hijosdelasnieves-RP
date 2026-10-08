@@ -1,0 +1,21 @@
+HDN isolated tailor renderer, modified 8 October 2026, GPL-3.0.
+This is an HDN fork, NOT an official Mesh Rendering Framework release.
+There is no warranty. Redistribution/modification are permitted under GPL-3.0.
+
+Mesh Rendering Framework: QTR-Modding / SkyrimThiago, GPL-3.0
+https://github.com/QTR-Modding/Mesh-Rendering-Framework
+Source: c92dd6a71b7a8e71fd9f1d5a76f82e2b14c22833
+Nifly: https://github.com/Thiago099/nifly, GPL-3.0
+Source: cca0a770094bb962fb28ea1fec5ea903e68fda8e
+CommonLibSSE-NG: https://github.com/alandtse/CommonLibSSE-NG, MIT
+Source: 94faaed0c60eddd8347767f2d4d29a97c93bde8c
+DirectXTex/DirectXTK: Microsoft, MIT, installed by pinned vcpkg manifest.
+
+Changes: build only private renderer core, no upstream UI/hook/periodic task;
+one-shot main-thread face capture; resource budgets; bounded GPU completion;
+posed full-body camera fit; dedicated hidden source and black compositing.
+Old unsafe inventory/Clone backend remains quarantined and is NOT linked.
+Original exported API signatures are retained. HDN exports are additive.
+Corresponding native source, build scripts, licenses and pinned dependencies
+are included alongside the experimental binary package before distribution.
+No SkyrimPlatform binary or public API is replaced.
