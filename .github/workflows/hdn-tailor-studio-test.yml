@@ -103,7 +103,11 @@ jobs:
           Copy-Item hdn-tailor-studio "$sources/hdn-tailor-studio" -Recurse
           Copy-Item studio-build/hdn-mesh-core "$sources/modified-mesh-core" -Recurse
           foreach ($dependency in @('meshframework-src','nifly-src','commonlib-src')) {
-            Copy-Item "studio-build/_deps/$dependency" "$sources/$dependency" -Recurse
+            # Archive tracked source, preserving Unix symlinks without traversing
+            # macOS framework links on Windows. No .git metadata/credentials.
+            $sourceArchive = Join-Path $sources.FullName "$dependency.tar"
+            git -C "studio-build/_deps/$dependency" archive --format=tar -o $sourceArchive HEAD
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           foreach ($dependency in @('directxtex','directxtk','fmt','spdlog','rapidcsv')) {
             $tree = "studio-vcpkg/buildtrees/$dependency/src"
