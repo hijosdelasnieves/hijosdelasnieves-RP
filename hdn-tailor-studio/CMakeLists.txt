@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(HdnTailorStudio VERSION 0.1.2 LANGUAGES CXX)
+project(HdnTailorStudio VERSION 0.1.3 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(HDN_BUILD_PLUGIN "Build the experimental Windows SKSE plugin" ${WIN32})
@@ -42,4 +42,8 @@ if(HDN_BUILD_PLUGIN)
     COMMAND studio-loader-tests "$<TARGET_FILE:HdnTailorStudio>" "disabled")
   add_test(NAME studio-loader-missing-address-library
     COMMAND studio-loader-tests "$<TARGET_FILE:HdnTailorStudio>" "missing-library")
+  add_test(NAME studio-loader-quarantine-with-library
+    COMMAND studio-loader-tests "$<TARGET_FILE:HdnTailorStudio>" "quarantined")
+  add_test(NAME studio-loader-quarantine-crlf
+    COMMAND studio-loader-tests "$<TARGET_FILE:HdnTailorStudio>" "quarantined-crlf")
 endif()

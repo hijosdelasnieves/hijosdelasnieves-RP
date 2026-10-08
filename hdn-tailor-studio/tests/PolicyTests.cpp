@@ -1,3 +1,4 @@
+#include "BackendSafety.hpp"
 #include "PixelProbe.hpp"
 #include "Policy.hpp"
 #include "RenderDiagnostic.hpp"
@@ -18,6 +19,10 @@ void check(bool condition)
 int main()
 {
   using namespace hdn::studio;
+  check(!privateBackendValidated);
+  for (bool requested : { false, true })
+    for (bool runtimeSupported : { false, true })
+      check(!admitPrivateBackend(requested, runtimeSupported));
   check(supportedRuntime({ 1, 5, 97, 0 }));
   check(supportedRuntime({ 1, 6, 1170, 0 }));
   check(!supportedRuntime({ 1, 6, 1170, 1 }));
@@ -64,13 +69,20 @@ int main()
   }
   Policy p;
   check(!p.live(0, 0));
+  check(!p.rejectCapture(0, 0, 0));
   const auto first = p.begin(100);
   check(first > 0 && p.live(first, 100));
   check(p.status(first, 100) == Status::loading);
+  check(!p.rejectCapture(first + 1, 0, 100));
+  check(!p.rejectCapture(first, 1, 100));
+  check(p.rejectCapture(first, 0, 100));
+  check(p.status(first, 100) == Status::busy);
+  check(!p.rejectCapture(first, 0, 100));
   check(!p.select(first, 0, 100));
   check(p.select(first, 1, 100));
   check(p.commit(first, 1, 100, true));
   check(p.status(first, 100) == Status::captured);
+  check(!p.rejectCapture(first, 1, 100));
   p.rendered(true);
   check(p.status(first, 100) == Status::rendered);
   p.rendered(false);
@@ -95,6 +107,7 @@ int main()
   check(!p.expire(3101));
   check(p.expire(3102));
   check(!p.frame(first, 3103, 0, 1));
+  check(!p.rejectCapture(first, 2, 3103));
   const auto second = p.begin(4000);
   check(second > first);
   check(!p.end(first));

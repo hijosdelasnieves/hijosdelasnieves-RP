@@ -1,4 +1,5 @@
 #include "Studio.hpp"
+#include "BackendSafety.hpp"
 #include "D3DState.hpp"
 #include "PCH.hpp"
 #include "PixelProbe.hpp"
@@ -370,12 +371,12 @@ bool installHook()
 
 std::int32_t apiVersion(RE::StaticFunctionTag*)
 {
-  return enabled && hooked ? 1 : 0;
+  return privateBackendValidated && enabled && hooked ? 1 : 0;
 }
 std::int32_t beginSession(RE::StaticFunctionTag*)
 {
   std::scoped_lock lock(mutex);
-  if (!enabled || !hooked)
+  if (!privateBackendValidated || !enabled || !hooked)
     return 0;
   reset();
   return policy.begin(now());
@@ -384,9 +385,22 @@ bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
               std::int32_t revision, std::int32_t signedId)
 {
   std::scoped_lock lock(mutex);
+  if (!privateBackendValidated || !enabled || !hooked)
+    return false;
   const auto timestamp = now();
   if (!policy.select(token, revision, timestamp))
     return false;
+  // Previously the scene check ran only in Present, AFTER Clone() committed.
+  // Rejected renders still allocated and later destroyed a full skeleton.
+  // Any replacement must reject busy scenes before touching actor geometry.
+  const auto state = sceneState(RE::UI3DSceneManager::GetSingleton(),
+                                RE::Inventory3DManager::GetSingleton());
+  const auto reason = sceneReason(state);
+  if (reason != RenderReason::none) {
+    policy.rejectCapture(token, revision, timestamp);
+    rejectRender(reason, S_OK, state);
+    return false;
+  }
   lastRenderReason = RenderReason::none;
   model.reset();
   radius = 0;
@@ -495,8 +509,9 @@ void onMessage(SKSE::MessagingInterface::Message* message)
     enabled = GetPrivateProfileIntW(L"Studio", L"EnableExperimental", 0,
                                     config.c_str()) == 1;
     const auto runtime = REL::Module::get().version();
-    enabled = enabled &&
-      supportedRuntime({ runtime[0], runtime[1], runtime[2], runtime[3] });
+    enabled = admitPrivateBackend(
+      enabled,
+      supportedRuntime({ runtime[0], runtime[1], runtime[2], runtime[3] }));
     hooked = enabled && installHook();
     logger().info("Experimental enabled={} hook={} API={}", enabled, hooked,
                   apiVersion(nullptr));

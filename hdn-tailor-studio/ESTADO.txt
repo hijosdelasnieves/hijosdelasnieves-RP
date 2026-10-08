@@ -1,8 +1,32 @@
-HDN — Probador privado — PROTOTIPO EXPERIMENTAL, NO PUBLICADO
+HDN — Probador privado — BACKEND EN CUARENTENA TRAS CRASH
+
+Build 0.1.3: contención del crash confirmado el 08/10 en DLL0.1.2.
+NO es un probador privado reparado ni una aceptación visual.
+El backend NO se inicializa aunque EnableExperimental=1 y exista Address
+Library: no SKSE::Init, registro Papyrus, hook Present ni copia de esqueleto.
+El cliente conserva la vista anterior al no encontrar una API privada activa.
+La cuarentena tiene guardas independientes en loader, ApiVersion, BeginSession,
+Snapshot y activación. Las pruebas Windows cargan la DLL real con INI0/INI1,
+LF/CRLF y bases de direcciones deliberadamente inválidas pero existentes;
+deben demostrar cero consultas de interfaces e impedir el acceso al motor.
+Snapshot rechaza además una escena ocupada ANTES de copiar geometría.
+
+Incidente localizado: EndSession/model.reset(), offset1EEF3, al destruir el
+árbol copiado (BSFlattenedBoneTree). El origen exacto de la memoria inválida
+sigue sin demostrar. No corregirlo suprimiendo frees, reteniendo fugas o
+capturando access violations; tampoco desactivar EngineFixes. Render rechazado
+en cinco intentos antes de dibujar: customRendering=2, lightSchemes=2.
+Pendiente sustituir copia/renderer por una implementación de ownership y
+contexto de render verificables en Skyrim Windows. No relajar esas guardas.
+La build anterior 0.1.2 se publicó para un ensayo DEV, se desactivó mediante
+recuperación211951 autorizada por Mike; NO reactivarla con un INI antiguo.
+
+Descripción del prototipo histórico (INACTIVO; no confundir con capacidad):
 
 Complemento adicional HdnTailorStudio.dll; NO sustituye SkyrimPlatform.
 fmt/spdlog enlazados estáticamente: no instalar ni sustituir sus DLL compartidas.
-Build 0.1.2: Skyrim 1.6.1170 (SKSE 2.2.6) y 1.5.97; otros runtimes rechazados.
+Runtimes declarados: Skyrim 1.6.1170 (SKSE 2.2.6) y 1.5.97;
+otros runtimes rechazados. Esto no valida la copia ni el render.
 Diagnóstico de rechazos: motivo, token/revisión, contadores UI/escena y HRESULT.
 Se conservan todas las guardas del renderer; no fuerza pausa ni un render ocupado.
 CommonLibSSE-NG actualizado y fijado a94faaed; cadena Present de SkyrimPlatform.
@@ -11,7 +35,7 @@ Si falta la biblioteca de direcciones de la versión, se conserva el probador
 anterior sin impedir el arranque. Esto no valida el render en Skyrim.
 Desactivado por defecto: EnableExperimental=0. No instalar en PROD.
 
-Implementado: contrato Papyrus, sesiones con tokens no reutilizados, revisiones
+Prototipo en cuarentena: contrato Papyrus, tokens no reutilizados, revisiones
 de selección, caducidad sin heartbeat, snapshot de la geometría del clon local,
 render UI3D separado del mundo, fondo negro anterior a CEF y giro independiente.
 El personaje real no se mueve, no se cambia su cámara, inventario ni equipo.

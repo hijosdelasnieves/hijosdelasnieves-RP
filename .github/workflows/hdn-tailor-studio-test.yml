@@ -21,6 +21,7 @@ jobs:
         run: |
           node hdn-tailor-studio/tests/StudioClient.test.cjs
           node hdn-tailor-studio/tests/Viewport.test.cjs
+          node hdn-tailor-studio/tests/SafetyGates.test.cjs
       - name: Checkout pinned vcpkg
         uses: actions/checkout@v4
         with:

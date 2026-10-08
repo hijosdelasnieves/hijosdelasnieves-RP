@@ -1,3 +1,4 @@
+#include "BackendSafety.hpp"
 #include "PCH.hpp"
 #include "Runtime.hpp"
 #include "Studio.hpp"
@@ -29,14 +30,21 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
   if (GetPrivateProfileIntW(L"Studio", L"EnableExperimental", 0,
                             config.c_str()) != 1) {
     OutputDebugStringA(
-      "HDN tailor 0.1.2: disabled; legacy preview retained\n");
+      "HDN tailor 0.1.3: disabled; legacy preview retained\n");
+    return true;
+  }
+  // Deliberately before Address Library, SKSE::Init, Papyrus and Present.
+  // Even an old EnableExperimental=1 file cannot reactivate the CTD path.
+  if (!hdn::studio::privateBackendValidated) {
+    OutputDebugStringA("HDN tailor 0.1.3: unsafe private backend quarantined; "
+                       "legacy preview retained\n");
     return true;
   }
   const auto library = std::filesystem::path("Data/SKSE/Plugins") /
     ((runtime == SKSE::RUNTIME_SSE_1_5_97 ? "version-" : "versionlib-") +
      runtime.string() + ".bin");
   if (!std::filesystem::is_regular_file(library)) {
-    OutputDebugStringA("HDN tailor 0.1.2: Address Library missing; legacy "
+    OutputDebugStringA("HDN tailor 0.1.3: Address Library missing; legacy "
                        "preview retained\n");
     return true;
   }
@@ -54,7 +62,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
   hdn::studio::logger().flush_on(spdlog::level::info);
   // Do not replace the shared spdlog default logger used by other plugins.
   hdn::studio::logger().info(
-    "Experimental DEV studio 0.1.2; runtime={}; does not replace "
+    "Experimental DEV studio 0.1.3; runtime={}; does not replace "
     "SkyrimPlatform",
     runtime.string());
   return SKSE::GetPapyrusInterface()->Register(hdn::studio::registerPapyrus) &&

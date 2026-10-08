@@ -59,12 +59,28 @@ int main(int argc, char** argv)
   check(!std::filesystem::exists(sandbox));
   std::filesystem::create_directories(sandbox / "Data/SKSE/Plugins");
   std::filesystem::current_path(sandbox);
-  const bool missingLibrary = std::string(argv[2]) == "missing-library";
-  check(missingLibrary || std::string(argv[2]) == "disabled");
+  const std::string mode(argv[2]);
+  const bool missingLibrary = mode == "missing-library";
+  const bool quarantined = mode == "quarantined" || mode == "quarantined-crlf";
+  check(missingLibrary || quarantined || mode == "disabled");
   {
-    std::ofstream config("Data/SKSE/Plugins/HdnTailorStudio.ini");
-    config << "[Studio]\nEnableExperimental=" << (missingLibrary ? 1 : 0)
-           << "\n";
+    std::ofstream config("Data/SKSE/Plugins/HdnTailorStudio.ini",
+                         std::ios::binary);
+    const auto newline = mode == "quarantined-crlf" ? "\r\n" : "\n";
+    config << "[Studio]" << newline
+           << "EnableExperimental=" << (missingLibrary || quarantined ? 1 : 0)
+           << newline;
+  }
+  if (quarantined) {
+    // Existence alone was the old loader guard. A corrupt database must NOT
+    // be opened: a quarantined backend must not initialize CommonLib at all.
+    for (const auto* name :
+         { "versionlib-1-6-1170-0.bin", "version-1-5-97-0.bin" }) {
+      std::ofstream library(std::filesystem::path("Data/SKSE/Plugins") / name,
+                            std::ios::binary);
+      library << "invalid database: must never be opened";
+      check(library.good());
+    }
   }
   const auto module = LoadLibraryW(dllPath.c_str());
   check(module != nullptr);
@@ -78,7 +94,7 @@ int main(int argc, char** argv)
     GetProcAddress(module, "SKSEPlugin_Version"));
   check(load && pluginQuery && metadata);
   check(metadata[0] == 1);
-  check(metadata[1] == pack(0, 1, 2));
+  check(metadata[1] == pack(0, 1, 3));
   const auto versions = metadata + 0x30C / sizeof(std::uint32_t);
   check(versions[0] == pack(1, 5, 97));
   check(versions[1] == pack(1, 6, 1170));
@@ -90,7 +106,7 @@ int main(int argc, char** argv)
   PluginInfo info{};
   check(pluginQuery(nullptr, &info));
   check(info.version == 1 && std::string(info.name) == "HdnTailorStudio");
-  check(info.pluginVersion == pack(0, 1, 2));
+  check(info.pluginVersion == pack(0, 1, 3));
   check(!load(nullptr));
   LoaderInterface fixture;
   check(load(&fixture)); // The version which previously failed in game.

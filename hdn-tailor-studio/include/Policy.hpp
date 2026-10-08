@@ -81,6 +81,15 @@ public:
     status_ = valid ? Status::captured : Status::invalidModel;
     return true;
   }
+  bool rejectCapture(std::int32_t token, std::int32_t revision,
+                     std::uint64_t now)
+  {
+    if (!live(token, now) || revision != revision_ ||
+        status_ != Status::loading)
+      return false;
+    status_ = Status::busy;
+    return true;
+  }
   bool end(std::int32_t token)
   {
     if (token <= 0 || token != token_)
