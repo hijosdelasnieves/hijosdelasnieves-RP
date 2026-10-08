@@ -21,8 +21,13 @@ if(HDN_BUILD_PLUGIN)
     GIT_TAG 94faaed0c60eddd8347767f2d4d29a97c93bde8c)
   FetchContent_MakeAvailable(commonlib)
   include(${commonlib_SOURCE_DIR}/cmake/CommonLibSSE.cmake)
+  # CommonLib defaults unused VersionNumber entries to 1.0.0; SKSE needs zeros.
+  set(HDN_COMPATIBLE_RUNTIMES 1.5.97 1.6.1170)
+  foreach(index RANGE 1 14)
+    list(APPEND HDN_COMPATIBLE_RUNTIMES 0.0.0)
+  endforeach()
   add_commonlibsse_plugin(HdnTailorStudio AUTHOR "Hijos de las Nieves"
-    STRUCT_DEPENDENT COMPATIBLE_RUNTIMES 1.5.97 1.6.1170
+    STRUCT_DEPENDENT COMPATIBLE_RUNTIMES ${HDN_COMPATIBLE_RUNTIMES}
     SOURCES src/Plugin.cpp src/Studio.cpp)
   target_include_directories(HdnTailorStudio PRIVATE include)
   target_compile_definitions(HdnTailorStudio PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
