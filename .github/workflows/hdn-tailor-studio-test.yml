@@ -66,8 +66,9 @@ jobs:
           $compiler = Get-ChildItem Caprica -Filter Caprica.exe -Recurse | Select-Object -First 1
           if (-not $compiler) { throw 'Compiler missing' }
           $pexOutput = (New-Item -ItemType Directory -Force studio-build/package/Data/Scripts).FullName
+          $flags = (Resolve-Path cmake/TESV_Papyrus_Flags.flg).Path
           Set-Location hdn-tailor-studio/scripts/Source
-          & $compiler.FullName --game skyrim --output $pexOutput HdnTailorStudio.psc
+          & $compiler.FullName --game skyrim --flags $flags --output $pexOutput HdnTailorStudio.psc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Stage test package (no deployment)
         shell: pwsh
