@@ -215,7 +215,7 @@ HRESULT STDMETHODCALLTYPE present(IDXGISwapChain* swap, UINT interval,
     try {
       draw(swap);
     } catch (const std::exception& error) {
-      SKSE::log::error("Render exception; studio closed: {}", error.what());
+      logger().error("Render exception; studio closed: {}", error.what());
       std::scoped_lock lock(mutex);
       reset();
     }
@@ -246,7 +246,7 @@ bool installHook()
   // Unknown Present chains are refused: never accidentally paint over CEF.
   if (filename != L"skyrimplatformimpl.dll" &&
       filename != L"skyrimplatform.dll") {
-    SKSE::log::warn("Unsupported Present chain; studio stays unavailable");
+    logger().warn("Unsupported Present chain; studio stays unavailable");
     return false;
   }
   std::copy_n(table, swapVtable.size(), swapVtable.begin());
@@ -380,8 +380,8 @@ void onMessage(SKSE::MessagingInterface::Message* message)
     enabled =
       enabled && REL::Module::get().version() == SKSE::RUNTIME_SSE_1_5_97;
     hooked = enabled && installHook();
-    SKSE::log::info("Experimental enabled={} hook={} API={}", enabled, hooked,
-                    apiVersion(nullptr));
+    logger().info("Experimental enabled={} hook={} API={}", enabled, hooked,
+                  apiVersion(nullptr));
   } else if (message->type == SKSE::MessagingInterface::kPreLoadGame ||
              message->type == SKSE::MessagingInterface::kNewGame) {
     std::scoped_lock lock(mutex);

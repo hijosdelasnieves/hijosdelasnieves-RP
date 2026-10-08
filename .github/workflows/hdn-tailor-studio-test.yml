@@ -18,7 +18,9 @@ jobs:
         with:
           node-version: '20'
       - name: Test client contract
-        run: node hdn-tailor-studio/tests/StudioClient.test.cjs
+        run: |
+          node hdn-tailor-studio/tests/StudioClient.test.cjs
+          node hdn-tailor-studio/tests/Viewport.test.cjs
       - name: Checkout pinned vcpkg
         uses: actions/checkout@v4
         with:
