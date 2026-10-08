@@ -6,15 +6,28 @@
 
 namespace hdn::studio {
 inline thread_local float independentAspect = 0;
-inline float
-frameworkAspect(const RenderTarget* target)
+class AspectScope
+{
+  float previous_;
+
+public:
+  explicit AspectScope(float aspect)
+    : previous_(independentAspect)
+  {
+    independentAspect = aspect;
+  }
+  ~AspectScope() { independentAspect = previous_; }
+  AspectScope(const AspectScope&) = delete;
+  AspectScope& operator=(const AspectScope&) = delete;
+};
+inline float frameworkAspect(const RenderTarget* target)
 {
   return independentAspect > 0
-           ? independentAspect
-           : static_cast<float>(target->width) / target->height;
+    ? independentAspect
+    : static_cast<float>(target->width) / target->height;
 }
-inline std::optional<isolated::Camera>
-frameworkCamera(const Mesh* mesh, const RenderTarget* target)
+inline std::optional<isolated::Camera> frameworkCamera(
+  const Mesh* mesh, const RenderTarget* target)
 {
   if (!mesh || !target || !target->width || !target->height ||
       target->width > 2048 || target->height > 2048 || mesh->parts.empty() ||
@@ -33,8 +46,7 @@ frameworkCamera(const Mesh* mesh, const RenderTarget* target)
       if (index >= part.vertices.size())
         return {};
     for (const auto& vertex : part.vertices) {
-      const isolated::Point p{ vertex.position[0],
-                               vertex.position[1],
+      const isolated::Point p{ vertex.position[0], vertex.position[1],
                                vertex.position[2] };
       if (!isolated::finite(p) || std::abs(p.x) > 10000 ||
           std::abs(p.y) > 10000 || std::abs(p.z) > 10000)

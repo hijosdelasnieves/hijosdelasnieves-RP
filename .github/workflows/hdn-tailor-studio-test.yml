@@ -105,6 +105,10 @@ jobs:
           foreach ($dependency in @('meshframework-src','nifly-src','commonlib-src')) {
             Copy-Item "studio-build/_deps/$dependency" "$sources/$dependency" -Recurse
           }
+          foreach ($dependency in @('directxtex','directxtk','fmt','spdlog','rapidcsv')) {
+            $tree = "studio-vcpkg/buildtrees/$dependency/src"
+            if (Test-Path $tree) { Copy-Item $tree "$sources/$dependency" -Recurse }
+          }
           Copy-Item .github/workflows/hdn-tailor-studio-test.yml "$sources/build-workflow.yml"
           Compress-Archive -Path "$sources/*" -DestinationPath "$package/corresponding-source.zip"
           Copy-Item hdn-tailor-studio/scripts/Source "$package/Data/Scripts/" -Recurse

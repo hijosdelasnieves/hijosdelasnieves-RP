@@ -9,8 +9,7 @@ namespace hdn::studio {
 namespace {
 std::shared_ptr<spdlog::logger> pluginLogger;
 }
-spdlog::logger&
-logger()
+spdlog::logger& logger()
 {
   return *pluginLogger;
 }
@@ -28,11 +27,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     std::filesystem::absolute("Data/SKSE/Plugins/HdnTailorStudio.ini");
   // New opt-in is distinct. Old EnableExperimental=1 NEVER enables this build
   // or the crash path. Recovery loads both DLLs without touching the engine.
-  if (GetPrivateProfileIntW(
-        L"Studio", L"EnableIsolatedMeshBackend", 0, config.c_str()) != 1)
+  if (GetPrivateProfileIntW(L"Studio", L"EnableIsolatedMeshBackend", 0,
+                            config.c_str()) != 1)
     return true;
-  const auto library =
-    std::filesystem::path("Data/SKSE/Plugins") /
+  const auto library = std::filesystem::path("Data/SKSE/Plugins") /
     ((runtime == SKSE::RUNTIME_SSE_1_5_97 ? "version-" : "versionlib-") +
      runtime.string() + ".bin");
   if (!std::filesystem::is_regular_file(library))
@@ -54,6 +52,5 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     "no inventory renderer, SkyrimPlatform unchanged",
     runtime.string());
   return SKSE::GetPapyrusInterface()->Register(hdn::studio::registerPapyrus) &&
-         SKSE::GetMessagingInterface()->RegisterListener(
-           hdn::studio::onMessage);
+    SKSE::GetMessagingInterface()->RegisterListener(hdn::studio::onMessage);
 }

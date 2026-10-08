@@ -1,12 +1,23 @@
 #include "IsolatedView.hpp"
+#include "Policy.hpp"
 #include <cassert>
 #include <iostream>
 #include <limits>
 
 using namespace hdn::studio::isolated;
-int
-main()
+int main()
 {
+  hdn::studio::Policy policy;
+  const auto token = policy.begin(0);
+  assert(policy.select(token, 1, 1));
+  assert(!policy.captureWindow(token, 2, 2));
+  assert(policy.captureWindow(token, 1, 2));
+  assert(policy.live(token, 12001));
+  assert(!policy.live(token, 12002));
+  assert(policy.frame(token, 10000, 0, 1));
+  assert(!policy.live(token, 13000));
+  assert(policy.commit(token, 1, 11000, true));
+  assert(!policy.captureWindow(token, 1, 11000));
   std::size_t checks = 0;
   const Bounds body{ { -25, -20, 0 }, { 25, 20, 180 } };
   const Bounds cape{ { -100, -80, -8 }, { 120, 70, 188 } };

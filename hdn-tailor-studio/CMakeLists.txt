@@ -49,6 +49,10 @@ if(HDN_BUILD_PLUGIN)
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/package/Data/SKSE/Plugins"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/package/Data/SKSE/Plugins")
   add_executable(studio-loader-tests tests/LoaderTests.cpp)
+  add_executable(studio-d3d-state-tests tests/D3DStateTests.cpp)
+  target_include_directories(studio-d3d-state-tests PRIVATE include)
+  target_link_libraries(studio-d3d-state-tests PRIVATE d3d11)
+  add_test(NAME studio-d3d-state COMMAND studio-d3d-state-tests)
   add_dependencies(studio-loader-tests HdnTailorStudio)
   add_test(NAME studio-loader-disabled
     COMMAND studio-loader-tests "$<TARGET_FILE:HdnTailorStudio>" "disabled")

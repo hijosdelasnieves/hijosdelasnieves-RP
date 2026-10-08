@@ -12,7 +12,7 @@ class StudioClient {
   }
   invoke(name, ...args) { return this.call('HdnTailorStudio', name, undefined, ...args); }
   available() {
-    try { return this.invoke('ApiVersion') === 1; } catch (_) { return false; }
+    try { return this.invoke('ApiVersion') === 2; } catch (_) { return false; }
   }
   open() {
     this.close();

@@ -7,7 +7,7 @@ let calls = [], serial = 0, active = 0;
 function native(cls, method, self, ...args) {
   check(cls === 'HdnTailorStudio' && self === undefined);
   calls.push({method, args});
-  if (method === 'ApiVersion') return 1;
+  if (method === 'ApiVersion') return 2;
   if (method === 'BeginSession') return active = ++serial;
   if (method === 'EndSession') { check(args[0] === active); active = 0; return true; }
   if (method === 'Snapshot') { check(args[0] === active); return true; }
@@ -51,8 +51,10 @@ studio = new StudioClient(() => { throw Error('Plugin missing'); });
 check(!studio.open());
 studio = new StudioClient(() => 0);
 check(!studio.open());
+studio = new StudioClient(() => 1);
+check(!studio.open()); // Quarantined API1 is not the independent renderer.
 for (const token of [-1, 1.5, NaN, '1']) {
-  studio = new StudioClient((cls, method) => method === 'ApiVersion' ? 1 : token);
+  studio = new StudioClient((cls, method) => method === 'ApiVersion' ? 2 : token);
   check(!studio.open());
 }
 console.log(`${count} adapter checks passed (mock API, not a Skyrim render test)`);

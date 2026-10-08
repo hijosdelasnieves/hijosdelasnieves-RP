@@ -47,6 +47,8 @@ class D3DState
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT>
     targets_{};
   ID3D11DepthStencilView* depth_ = nullptr;
+  std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT>
+    uavs_{};
   ID3D11DepthStencilState* depthState_ = nullptr;
   UINT stencilRef_ = 0, sampleMask_ = 0;
   ID3D11BlendState* blend_ = nullptr;
@@ -93,6 +95,8 @@ public:
 #undef HDN_GET_STAGE
     context_->OMGetRenderTargets(static_cast<UINT>(targets_.size()),
                                  targets_.data(), &depth_);
+    context_->OMGetRenderTargetsAndUnorderedAccessViews(
+      0, nullptr, nullptr, 0, static_cast<UINT>(uavs_.size()), uavs_.data());
     context_->OMGetDepthStencilState(&depthState_, &stencilRef_);
     context_->OMGetBlendState(&blend_, blendFactor_, &sampleMask_);
     context_->RSGetState(&raster_);
@@ -113,8 +117,16 @@ public:
       empty{};
     context_->PSSetShaderResources(0, static_cast<UINT>(empty.size()),
                                    empty.data());
-    context_->OMSetRenderTargets(static_cast<UINT>(targets_.size()),
-                                 targets_.data(), depth_);
+    UINT targetCount = 0;
+    for (UINT index = 0; index < targets_.size(); ++index)
+      if (targets_[index])
+        targetCount = index + 1;
+    std::array<UINT, D3D11_PS_CS_UAV_REGISTER_COUNT> preserveCounters{};
+    preserveCounters.fill(static_cast<UINT>(-1));
+    context_->OMSetRenderTargetsAndUnorderedAccessViews(
+      targetCount, targets_.data(), depth_, targetCount,
+      static_cast<UINT>(uavs_.size()) - targetCount,
+      uavs_.data() + targetCount, preserveCounters.data() + targetCount);
     context_->OMSetDepthStencilState(depthState_, stencilRef_);
     context_->OMSetBlendState(blend_, blendFactor_, sampleMask_);
     context_->RSSetState(raster_);
@@ -143,6 +155,7 @@ public:
     HDN_SET_STAGE(DS, ds_);
 #undef HDN_SET_STAGE
     release(targets_);
+    release(uavs_);
     release(vertices_);
     if (depth_)
       depth_->Release();

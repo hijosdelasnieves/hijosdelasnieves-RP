@@ -35,16 +35,23 @@ function(hdn_patch_framework filename)
     constexpr float horizontalHalfSpan = 130.0f;
     constexpr float cameraDistance = cameraY - subjectY;
     const float verticalHalfSpan = horizontalHalfSpan / aspect;]=])
-    hdn_replace("${old}" [=[    const float cameraY = static_cast<float>(fitted->distance);
-    constexpr float subjectY = 0.0f;
+    hdn_replace("${old}" [=[    const bool independent = hdn::studio::independentAspect > 0;
+    const float cameraY = independent ? static_cast<float>(fitted->distance) : 320.0f;
+    const float subjectY = independent ? 0.0f : -500.0f;
+    const float verticalHalfSpan = 130.0f / aspect;
+    const float cameraDistance = cameraY - subjectY;
     // Fit all current posed parts, including head/feet/capes, at every yaw.
     const RE::NiPoint3 center{static_cast<float>(fitted->center.x),
         static_cast<float>(fitted->center.y), static_cast<float>(fitted->center.z)};
-    sourceMesh->mesh->position = sourceMesh->mesh->rotation *
-        (center * -sourceMesh->mesh->scale);]=])
+    if (independent) {
+        sourceMesh->mesh->position = sourceMesh->mesh->rotation *
+            (center * -sourceMesh->mesh->scale);
+    }]=])
     hdn_replace([=[        2.0f * std::atan(verticalHalfSpan / cameraDistance), aspect, 1.0f, 10000.0f);]=]
-      [=[        2.0f * std::atan(static_cast<float>(fitted->verticalTangent)), aspect,
-        static_cast<float>(fitted->nearPlane), static_cast<float>(fitted->farPlane));]=])
+      [=[        2.0f * std::atan(independent ? static_cast<float>(fitted->verticalTangent) :
+            verticalHalfSpan / cameraDistance), aspect,
+        independent ? static_cast<float>(fitted->nearPlane) : 1.0f,
+        independent ? static_cast<float>(fitted->farPlane) : 10000.0f);]=])
     hdn_replace("while (completionResult == S_FALSE) {" [=[const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
     while (completionResult == S_FALSE) {
         if (std::chrono::steady_clock::now() >= deadline ||

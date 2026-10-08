@@ -1,4 +1,34 @@
-HDN — Probador privado — BACKEND EN CUARENTENA TRAS CRASH
+HDN — Probador independiente 0.2.0 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
+
+Build con -DHDN_BUILD_ISOLATED=ON: HdnTailorStudio.dll + copia propia GPL
+MeshRenderingFramework.dll. API2 exclusiva; EnableIsolatedMeshBackend=1
+requiere autorización de ensayo DEV. Por defecto ambas DLL quedan inactivas,
+sin abrir Address Library ni consultar interfaces del juego. EnableExperimental
+NO activa la ruta independiente; la ruta antigua sigue en cuarentena.
+No reemplaza SkyrimPlatform, ni EngineFixes, ni runtime global, ni otro NPC.
+
+Captura de recursos NIF, ropa, pose local y cara una vez, en tarea main-thread.
+Render posterior desde geometría/COM propios en dispositivo D3D11 privado;
+sin NiClone, raíces 3D retenidas, singleton de inventario ni cámara de juego.
+Fuente local siempre invisible en cliente; escena del mundo cubierta por negro
+antes de la presentación CEF verificada. Encuadre de todas las partes, margen
+estable a cualquier yaw/aspecto. Zoom de cuerpo completo no corta cabeza/pies.
+Caducidad/token/revisión, rechazo de tareas obsoletas, límites de recurso y
+espera GPU acotada. Sonda no bloqueante exige píxeles de geometría antes de
+GetStatus=3. Conserva/restaura estado gráfico, incluidos UAV de salida.
+
+CI compila ambas DLL y comprueba loader real con configuración desactivada,
+legacy INI1 y nueva configuración sin biblioteca; WARP comprueba restauración
+de estado. Pruebas geométricas y contratos NO prueban fidelidad del avatar.
+Fuente correspondiente/licencias incluidas con los binarios; THIRD-PARTY.txt.
+No instalación automática ni publicación por el workflow.
+
+Falta aceptación Skyrim: modelo frontal entero, cara/color/peso y ropa fieles,
+sin doble en mundo, rendimiento, dos clientes simultáneos, 30 aperturas/cierres,
+menús y reconexión. Probar específicamente casco/cabello y prendas con física;
+es snapshot de pose, no animación/cloth simulation en tiempo real.
+
+HISTÓRICO — backend 0.1.3 en cuarentena (NO enlazado en build independiente):
 
 Build 0.1.3: contención del crash confirmado el 08/10 en DLL0.1.2.
 NO es un probador privado reparado ni una aceptación visual.

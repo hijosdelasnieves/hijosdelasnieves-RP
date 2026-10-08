@@ -30,7 +30,8 @@ target_include_directories(MeshRenderingFramework PRIVATE include
   "${meshframework_SOURCE_DIR}/include")
 target_precompile_headers(MeshRenderingFramework PRIVATE
   "${meshframework_SOURCE_DIR}/include/PCH.h")
-target_compile_definitions(MeshRenderingFramework PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_definitions(MeshRenderingFramework PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+  UNICODE _UNICODE)
 target_link_libraries(MeshRenderingFramework PRIVATE nifly Microsoft::DirectXTex
   d3d11 d3dcompiler dxgi windowscodecs)
 set_target_properties(MeshRenderingFramework PROPERTIES

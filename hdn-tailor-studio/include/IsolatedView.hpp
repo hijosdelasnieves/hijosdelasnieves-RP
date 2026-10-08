@@ -14,8 +14,7 @@ struct Point
 {
   double x = 0, y = 0, z = 0;
 };
-inline bool
-finite(Point p)
+inline bool finite(Point p)
 {
   return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
 }
@@ -31,8 +30,8 @@ struct Camera
 };
 // Coordinates are independent of the gameplay camera. All yaw angles use
 // the same bounding sphere: rotating a cape cannot invalidate the fit.
-inline std::optional<Camera>
-fitCamera(Bounds bounds, double aspect, double zoom = 1)
+inline std::optional<Camera> fitCamera(Bounds bounds, double aspect,
+                                       double zoom = 1)
 {
   if (!finite(bounds.minimum) || !finite(bounds.maximum) ||
       bounds.minimum.x > bounds.maximum.x ||
@@ -81,8 +80,7 @@ struct Scene
 };
 // Reject incomplete/corrupt buffers before uploading to the independent GPU
 // renderer. One scene's budget includes ALL mesh parts, not each part alone.
-inline std::optional<Bounds>
-validateScene(const std::vector<Mesh>& meshes)
+inline std::optional<Bounds> validateScene(const std::vector<Mesh>& meshes)
 {
   constexpr std::size_t maximumVertices = 500000;
   constexpr std::size_t maximumIndices = 3000000;

@@ -73,6 +73,18 @@ public:
     status_ = Status::loading;
     return true;
   }
+  // Independent resource capture runs on the main thread and can stall the
+  // client's own update/heartbeat. Give ONLY a current loading revision a
+  // bounded initial window; normal Frame() returns to the 3-second lease.
+  bool captureWindow(std::int32_t token, std::int32_t revision,
+                     std::uint64_t now)
+  {
+    if (!live(token, now) || revision != revision_ ||
+        status_ != Status::loading)
+      return false;
+    deadline_ = now + 12000;
+    return true;
+  }
   bool commit(std::int32_t token, std::int32_t revision, std::uint64_t now,
               bool valid)
   {

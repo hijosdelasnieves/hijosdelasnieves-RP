@@ -56,16 +56,14 @@ ComPtr<ID3D11Query> probeQuery;
 bool probePending = false;
 std::uint64_t probeDeadline = 0;
 
-std::uint64_t
-now()
+std::uint64_t now()
 {
   return static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now().time_since_epoch())
       .count());
 }
-void
-deleteModel()
+void deleteModel()
 {
   if (model)
     framework.destroy(std::exchange(model, nullptr));
@@ -73,14 +71,12 @@ deleteModel()
   probeTexture.Reset();
   probeQuery.Reset();
 }
-void
-reset()
+void reset()
 {
   policy.end(policy.token());
   deleteModel();
 }
-bool
-initializeQuad(IDXGISwapChain* swap)
+bool initializeQuad(IDXGISwapChain* swap)
 {
   ComPtr<ID3D11Device> current;
   if (FAILED(swap->GetDevice(IID_PPV_ARGS(&current))))
@@ -111,32 +107,15 @@ float4 ps(V input):SV_TARGET {
 }
 )";
   ComPtr<ID3DBlob> vs, ps, errors;
-  if (FAILED(D3DCompile(shader,
-                        std::strlen(shader),
-                        nullptr,
-                        nullptr,
-                        nullptr,
-                        "vs",
-                        "vs_5_0",
-                        D3DCOMPILE_ENABLE_STRICTNESS,
-                        0,
-                        &vs,
+  if (FAILED(D3DCompile(shader, std::strlen(shader), nullptr, nullptr, nullptr,
+                        "vs", "vs_5_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, &vs,
                         &errors)) ||
-      FAILED(D3DCompile(shader,
-                        std::strlen(shader),
-                        nullptr,
-                        nullptr,
-                        nullptr,
-                        "ps",
-                        "ps_5_0",
-                        D3DCOMPILE_ENABLE_STRICTNESS,
-                        0,
-                        &ps,
+      FAILED(D3DCompile(shader, std::strlen(shader), nullptr, nullptr, nullptr,
+                        "ps", "ps_5_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, &ps,
                         &errors)))
     return false;
   if (FAILED(device->CreateVertexShader(vs->GetBufferPointer(),
-                                        vs->GetBufferSize(),
-                                        nullptr,
+                                        vs->GetBufferSize(), nullptr,
                                         &vertexShader)) ||
       FAILED(device->CreatePixelShader(
         ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &pixelShader)))
@@ -155,14 +134,13 @@ float4 ps(V input):SV_TARGET {
   rasterizing.DepthClipEnable = true;
   D3D11_DEPTH_STENCIL_DESC depthTesting{};
   return SUCCEEDED(device->CreateSamplerState(&sampling, &sampler)) &&
-         SUCCEEDED(device->CreateBlendState(&blending, &blend)) &&
-         SUCCEEDED(device->CreateRasterizerState(&rasterizing, &raster)) &&
-         SUCCEEDED(device->CreateDepthStencilState(&depthTesting, &depth));
+    SUCCEEDED(device->CreateBlendState(&blending, &blend)) &&
+    SUCCEEDED(device->CreateRasterizerState(&rasterizing, &raster)) &&
+    SUCCEEDED(device->CreateDepthStencilState(&depthTesting, &depth));
 }
 // Nonblocking one-shot liveness probe. Black pixels or alpha alone cannot
 // qualify as an avatar; does NOT prove face, outfit, pose or visual quality.
-bool
-probe(ID3D11ShaderResourceView* resource)
+bool probe(ID3D11ShaderResourceView* resource)
 {
   if (probed)
     return true;
@@ -192,16 +170,14 @@ probe(ID3D11ShaderResourceView* resource)
     probeDeadline = now() + 1000;
     return false;
   }
-  const auto ready = context->GetData(
-    probeQuery.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
+  const auto ready = context->GetData(probeQuery.Get(), nullptr, 0,
+                                      D3D11_ASYNC_GETDATA_DONOTFLUSH);
   if (ready == S_FALSE && now() < probeDeadline)
     return false;
   D3D11_MAPPED_SUBRESOURCE mapped{};
-  if (ready != S_OK || FAILED(context->Map(probeTexture.Get(),
-                                           0,
-                                           D3D11_MAP_READ,
-                                           D3D11_MAP_FLAG_DO_NOT_WAIT,
-                                           &mapped))) {
+  if (ready != S_OK ||
+      FAILED(context->Map(probeTexture.Get(), 0, D3D11_MAP_READ,
+                          D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped))) {
     policy.captureFailed();
     logger().warn("Independent texture probe failed or timed out");
     return false;
@@ -210,9 +186,7 @@ probe(ID3D11ShaderResourceView* resource)
   probeTexture->GetDesc(&description);
   const bool visible =
     hasVisiblePixels(static_cast<const std::uint8_t*>(mapped.pData),
-                     mapped.RowPitch,
-                     description.Width,
-                     description.Height);
+                     mapped.RowPitch, description.Width, description.Height);
   context->Unmap(probeTexture.Get(), 0);
   probeTexture.Reset();
   probeQuery.Reset();
@@ -225,12 +199,10 @@ probe(ID3D11ShaderResourceView* resource)
   probed = true;
   logger().info("Independent geometry pixels verified token={} revision={}; "
                 "visual Skyrim acceptance still required",
-                policy.token(),
-                policy.revision());
+                policy.token(), policy.revision());
   return true;
 }
-void
-draw(IDXGISwapChain* swap)
+void draw(IDXGISwapChain* swap)
 {
   std::scoped_lock lock(mutex);
   if (policy.expire(now()))
@@ -267,8 +239,7 @@ draw(IDXGISwapChain* swap)
     if (!framework.render(model, policy.yaw(), policy.zoom(), aspect)) {
       policy.captureFailed();
       logger().warn("Independent draw failed token={} revision={}",
-                    policy.token(),
-                    policy.revision());
+                    policy.token(), policy.revision());
       return;
     }
     dirty = false;
@@ -302,8 +273,8 @@ draw(IDXGISwapChain* swap)
   if (probe(resource))
     policy.rendered(true);
 }
-HRESULT STDMETHODCALLTYPE
-present(IDXGISwapChain* swap, UINT interval, UINT flags)
+HRESULT STDMETHODCALLTYPE present(IDXGISwapChain* swap, UINT interval,
+                                  UINT flags)
 {
   if (!(flags & DXGI_PRESENT_TEST)) {
     try {
@@ -316,14 +287,13 @@ present(IDXGISwapChain* swap, UINT interval, UINT flags)
   }
   return nextPresent(swap, interval, flags);
 }
-bool
-installHook()
+bool installHook()
 {
   auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
   auto* swap = renderer
-                 ? reinterpret_cast<IDXGISwapChain*>(
-                     renderer->GetRuntimeData().renderWindows[0].swapChain)
-                 : nullptr;
+    ? reinterpret_cast<IDXGISwapChain*>(
+        renderer->GetRuntimeData().renderWindows[0].swapChain)
+    : nullptr;
   if (!swap || !framework.bind() || !initializeQuad(swap) ||
       !framework.init(device.Get()))
     return false;
@@ -332,16 +302,13 @@ installHook()
   HMODULE owner = nullptr;
   if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                          reinterpret_cast<LPCWSTR>(table[8]),
-                          &owner))
+                          reinterpret_cast<LPCWSTR>(table[8]), &owner))
     return false;
   wchar_t path[MAX_PATH]{};
   if (!GetModuleFileNameW(owner, path, MAX_PATH))
     return false;
   auto filename = std::filesystem::path(path).filename().wstring();
-  std::transform(filename.begin(),
-                 filename.end(),
-                 filename.begin(),
+  std::transform(filename.begin(), filename.end(), filename.begin(),
                  [](wchar_t c) { return std::towlower(c); });
   if (filename != L"skyrimplatformimpl.dll" &&
       filename != L"skyrimplatform.dll") {
@@ -352,17 +319,15 @@ installHook()
   nextPresent = reinterpret_cast<Present>(table[8]);
   swapVtable[8] = reinterpret_cast<void*>(&present);
   return InterlockedCompareExchangePointer(
-           reinterpret_cast<void* volatile*>(object),
-           swapVtable.data(),
+           reinterpret_cast<void* volatile*>(object), swapVtable.data(),
            table) == table;
 }
-std::int32_t
-apiVersion(RE::StaticFunctionTag*)
+std::int32_t apiVersion(RE::StaticFunctionTag*)
 {
+  std::scoped_lock lock(mutex);
   return enabled && hooked ? 2 : 0;
 }
-std::int32_t
-beginSession(RE::StaticFunctionTag*)
+std::int32_t beginSession(RE::StaticFunctionTag*)
 {
   std::scoped_lock lock(mutex);
   if (!enabled || !hooked)
@@ -370,16 +335,14 @@ beginSession(RE::StaticFunctionTag*)
   reset();
   return policy.begin(now());
 }
-bool
-snapshot(RE::StaticFunctionTag*,
-         std::int32_t token,
-         std::int32_t revision,
-         std::int32_t signedId)
+bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
+              std::int32_t revision, std::int32_t signedId)
 {
   std::scoped_lock lock(mutex);
   if (!enabled || !hooked || !policy.select(token, revision, now()))
     return false;
   deleteModel();
+  policy.captureWindow(token, revision, now());
   const auto id = static_cast<RE::FormID>(signedId);
   if ((id >> 24) != 0xff || !SKSE::GetTaskInterface()) {
     policy.commit(token, revision, now(), false);
@@ -392,12 +355,16 @@ snapshot(RE::StaticFunctionTag*,
     auto* actor = RE::TESForm::LookupByID<RE::Actor>(id);
     auto* player = RE::PlayerCharacter::GetSingleton();
     auto* ui = RE::UI::GetSingleton();
-    const bool admitted =
-      actor && player && actor != player && !actor->IsDeleted() &&
-      !actor->IsDisabled() && !actor->IsDead() &&
+    const bool admitted = actor && player && actor != player &&
+      !actor->IsDeleted() && !actor->IsDisabled() && !actor->IsDead() &&
       actor->GetParentCell() == player->GetParentCell() &&
       actor->Get3D(false) && ui && !ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME);
-    void* captured = admitted ? framework.capture(actor) : nullptr;
+    void* captured = nullptr;
+    try {
+      captured = admitted ? framework.capture(actor) : nullptr;
+    } catch (const std::exception& error) {
+      logger().error("Independent resource capture failed: {}", error.what());
+    }
     if (!policy.commit(token, revision, now(), captured != nullptr)) {
       if (captured)
         framework.destroy(captured);
@@ -407,15 +374,11 @@ snapshot(RE::StaticFunctionTag*,
     dirty = model != nullptr;
     logger().info("Independent snapshot token={} revision={} actor=0x{:08x} "
                   "valid={} (main-thread, no retained Actor/NiObjects)",
-                  token,
-                  revision,
-                  id,
-                  model != nullptr);
+                  token, revision, id, model != nullptr);
   });
   return true;
 }
-bool
-frame(RE::StaticFunctionTag*, std::int32_t token, float yaw, float zoom)
+bool frame(RE::StaticFunctionTag*, std::int32_t token, float yaw, float zoom)
 {
   std::scoped_lock lock(mutex);
   const float oldYaw = policy.yaw(), oldZoom = policy.zoom();
@@ -424,25 +387,18 @@ frame(RE::StaticFunctionTag*, std::int32_t token, float yaw, float zoom)
   dirty = dirty || oldYaw != policy.yaw() || oldZoom != policy.zoom();
   return true;
 }
-bool
-viewport(RE::StaticFunctionTag*,
-         std::int32_t token,
-         float x,
-         float y,
-         float width,
-         float height)
+bool viewport(RE::StaticFunctionTag*, std::int32_t token, float x, float y,
+              float width, float height)
 {
   std::scoped_lock lock(mutex);
   return policy.viewport(token, now(), { x, y, width, height });
 }
-std::int32_t
-getStatus(RE::StaticFunctionTag*, std::int32_t token)
+std::int32_t getStatus(RE::StaticFunctionTag*, std::int32_t token)
 {
   std::scoped_lock lock(mutex);
   return static_cast<std::int32_t>(policy.status(token, now()));
 }
-bool
-endSession(RE::StaticFunctionTag*, std::int32_t token)
+bool endSession(RE::StaticFunctionTag*, std::int32_t token)
 {
   std::scoped_lock lock(mutex);
   if (!policy.end(token))
@@ -451,8 +407,7 @@ endSession(RE::StaticFunctionTag*, std::int32_t token)
   return true;
 }
 }
-bool
-registerPapyrus(RE::BSScript::IVirtualMachine* vm)
+bool registerPapyrus(RE::BSScript::IVirtualMachine* vm)
 {
   if (!vm)
     return false;
@@ -465,18 +420,16 @@ registerPapyrus(RE::BSScript::IVirtualMachine* vm)
   vm->RegisterFunction("EndSession", "HdnTailorStudio", endSession);
   return true;
 }
-void
-onMessage(SKSE::MessagingInterface::Message* message)
+void onMessage(SKSE::MessagingInterface::Message* message)
 {
   if (!message)
     return;
   if (message->type == SKSE::MessagingInterface::kDataLoaded) {
+    std::scoped_lock lock(mutex);
     enabled = true;
     hooked = installHook();
-    logger().info("Isolated mesh enabled={} hook={} API={}",
-                  enabled,
-                  hooked,
-                  apiVersion(nullptr));
+    logger().info("Isolated mesh enabled={} hook={} API={}", enabled, hooked,
+                  enabled && hooked ? 2 : 0);
   } else if (message->type == SKSE::MessagingInterface::kPreLoadGame ||
              message->type == SKSE::MessagingInterface::kNewGame) {
     std::scoped_lock lock(mutex);
