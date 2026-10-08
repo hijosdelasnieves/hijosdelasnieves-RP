@@ -1,0 +1,32 @@
+[
+  {
+    "name": "directxtex",
+    "repository": "Microsoft/DirectXTex",
+    "ref": "mar2026",
+    "sha512": "9aadfb8b1b68fe858260dc455550f6c0945b95fa7bd459e15428c56612b0a87977eeda3d62810fc7f3c2076ab14e20028891daf9b6d7e75e9c12726decfd8983"
+  },
+  {
+    "name": "directxtk",
+    "repository": "Microsoft/DirectXTK",
+    "ref": "mar2026",
+    "sha512": "cb302ae961cda328bf2b7f070e044b6bfba60ca8b1498763a1bc71ee38265654122e5f3a6a41ec4a5af8972fb1d5012aeaf42e3e3ef44151e2ed218a270892fb"
+  },
+  {
+    "name": "fmt",
+    "repository": "fmtlib/fmt",
+    "ref": "12.1.0",
+    "sha512": "f0da82c545b01692e9fd30fdfb613dbb8dd9716983dcd0ff19ac2a8d36f74beb5540ef38072fdecc1e34191b3682a8542ecbf3a61ef287dbba0a2679d4e023f2"
+  },
+  {
+    "name": "spdlog",
+    "repository": "gabime/spdlog",
+    "ref": "v1.17.0",
+    "sha512": "8df117055d19ff21c9c9951881c7bdf27cc0866ea3a4aa0614b2c3939cedceab94ac9abaa63dc4312b51562b27d708cb2f014c68c603fd1c1051d3ed5c1c3087"
+  },
+  {
+    "name": "rapidcsv",
+    "repository": "d99kris/rapidcsv",
+    "ref": "v8.92",
+    "sha512": "85041cfb88bf3c8cfa518c80feb087b52a611a10ebc0b3e3289850d96a9c44519e219af7abdd4509746aff5d54271b505f96f0d2b0d2c5cc05f57b671c8ea8a4"
+  }
+]
