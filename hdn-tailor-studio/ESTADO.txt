@@ -2,7 +2,9 @@ HDN — Probador privado — PROTOTIPO EXPERIMENTAL, NO PUBLICADO
 
 Complemento adicional HdnTailorStudio.dll; NO sustituye SkyrimPlatform.
 fmt/spdlog enlazados estáticamente: no instalar ni sustituir sus DLL compartidas.
-Build 0.1.1: Skyrim 1.6.1170 (SKSE 2.2.6) y 1.5.97; otros runtimes rechazados.
+Build 0.1.2: Skyrim 1.6.1170 (SKSE 2.2.6) y 1.5.97; otros runtimes rechazados.
+Diagnóstico de rechazos: motivo, token/revisión, contadores UI/escena y HRESULT.
+Se conservan todas las guardas del renderer; no fuerza pausa ni un render ocupado.
 CommonLibSSE-NG actualizado y fijado a94faaed; cadena Present de SkyrimPlatform.
 La recuperación desactivada carga sin inicializar el motor ni Address Library.
 Si falta la biblioteca de direcciones de la versión, se conserva el probador

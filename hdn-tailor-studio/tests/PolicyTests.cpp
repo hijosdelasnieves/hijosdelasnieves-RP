@@ -1,5 +1,6 @@
 #include "PixelProbe.hpp"
 #include "Policy.hpp"
+#include "RenderDiagnostic.hpp"
 #include "Runtime.hpp"
 #include <array>
 #include <cstdlib>
@@ -24,6 +25,43 @@ int main()
   check(!supportedRuntime({ 1, 6, 1130, 0 }));
   check(!supportedRuntime({ 1, 7, 104, 0 }));
   check(!supportedRuntime({ 1, 4, 15, 0 }));
+  const SceneState idle{ .ui = true, .camera = true, .inventory = true };
+  check(sceneReason(idle) == RenderReason::none);
+  for (auto [field, reason] : std::array{
+         std::pair{ &SceneState::ui, RenderReason::missingUI },
+         std::pair{ &SceneState::camera, RenderReason::missingCamera },
+         std::pair{ &SceneState::inventory,
+                    RenderReason::missingInventory } }) {
+    auto state = idle;
+    state.*field = false;
+    check(sceneReason(state) == reason);
+  }
+  for (auto [field, reason] : std::array{
+         std::pair{ &SceneState::closing, RenderReason::closingMenus },
+         std::pair{ &SceneState::loadTask, RenderReason::loadTask },
+         std::pair{ &SceneState::temporaryReference,
+                    RenderReason::temporaryReference } }) {
+    auto state = idle;
+    state.*field = true;
+    check(sceneReason(state) == reason);
+  }
+  for (auto [field, reason] : std::array{
+         std::pair{ &SceneState::pauses, RenderReason::pausedUI },
+         std::pair{ &SceneState::itemMenus, RenderReason::itemMenu },
+         std::pair{ &SceneState::customRendering,
+                    RenderReason::customRendering },
+         std::pair{ &SceneState::loadedModels, RenderReason::loadedModels },
+         std::pair{ &SceneState::lightSchemes, RenderReason::lightSchemes },
+         std::pair{ &SceneState::menuObjects, RenderReason::menuObjects } }) {
+    auto state = idle;
+    state.*field = 1;
+    check(sceneReason(state) == reason);
+  }
+  for (int value = 0; value <= static_cast<int>(RenderReason::noGeometry);
+       ++value) {
+    const auto name = reasonName(static_cast<RenderReason>(value));
+    check(!name.empty() && name != "unknown");
+  }
   Policy p;
   check(!p.live(0, 0));
   const auto first = p.begin(100);

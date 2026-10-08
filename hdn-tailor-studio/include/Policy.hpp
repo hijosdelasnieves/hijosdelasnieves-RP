@@ -114,6 +114,7 @@ public:
     return live(token, now) ? status_ : Status::closed;
   }
   std::int32_t token() const { return token_; }
+  std::int32_t revision() const { return revision_; }
   float yaw() const { return yaw_; }
   float zoom() const { return zoom_; }
   Viewport viewport() const { return viewport_; }

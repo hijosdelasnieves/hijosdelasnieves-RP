@@ -78,7 +78,7 @@ int main(int argc, char** argv)
     GetProcAddress(module, "SKSEPlugin_Version"));
   check(load && pluginQuery && metadata);
   check(metadata[0] == 1);
-  check(metadata[1] == pack(0, 1, 1));
+  check(metadata[1] == pack(0, 1, 2));
   const auto versions = metadata + 0x30C / sizeof(std::uint32_t);
   check(versions[0] == pack(1, 5, 97));
   check(versions[1] == pack(1, 6, 1170));
@@ -90,7 +90,7 @@ int main(int argc, char** argv)
   PluginInfo info{};
   check(pluginQuery(nullptr, &info));
   check(info.version == 1 && std::string(info.name) == "HdnTailorStudio");
-  check(info.pluginVersion == pack(0, 1, 1));
+  check(info.pluginVersion == pack(0, 1, 2));
   check(!load(nullptr));
   LoaderInterface fixture;
   check(load(&fixture)); // The version which previously failed in game.

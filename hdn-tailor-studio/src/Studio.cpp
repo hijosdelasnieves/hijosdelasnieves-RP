@@ -2,6 +2,7 @@
 #include "D3DState.hpp"
 #include "PCH.hpp"
 #include "PixelProbe.hpp"
+#include "RenderDiagnostic.hpp"
 #include "Runtime.hpp"
 #include <array>
 #include <cwctype>
@@ -20,6 +21,7 @@ RE::NiPoint3 center{};
 float radius = 0;
 bool needsPixelProbe = false;
 bool enabled = false, hooked = false;
+RenderReason lastRenderReason = RenderReason::none;
 Present nextPresent = nullptr;
 // Per-instance vtable, not a global detour of every D3D11 swap chain.
 std::array<void*, 18> swapVtable{};
@@ -43,32 +45,63 @@ void reset()
   model.reset();
   releaseSource();
   radius = 0;
+  lastRenderReason = RenderReason::none;
 }
 
 // Do not steal an inventory, magic, crafting, loading, book or mod-owned
 // scene. Neither Clear3D nor a fabricated LoadedInventoryModel is used
 // anywhere.
-bool sceneIdle(RE::UI3DSceneManager* scene, RE::Inventory3DManager* inventory)
+SceneState sceneState(RE::UI3DSceneManager* scene,
+                      RE::Inventory3DManager* inventory)
 {
+  SceneState state;
   const auto* ui = RE::UI::GetSingleton();
-  if (!ui || ui->numPausesGame || ui->numItemMenus || ui->numCustomRendering ||
-      ui->closingAllMenus)
-    return false;
-  if (!scene || !scene->camera || !inventory)
-    return false;
-  const auto& data = inventory->GetRuntimeData();
-  if (data.loadTask || !data.loadedModels.empty() || inventory->tempRef)
-    return false;
-  // A non-empty scheme stack is evidence of another owner, even without a
-  // menu.
-  if (!scene->lightSchemes.empty())
-    return false;
-  for (const auto& node : scene->menuObjects) {
-    if (node)
-      for (const auto& child : node->children)
-        if (child)
-          return false;
+  state.ui = ui != nullptr;
+  if (ui) {
+    state.pauses = ui->numPausesGame;
+    state.itemMenus = ui->numItemMenus;
+    state.customRendering = ui->numCustomRendering;
+    state.closing = ui->closingAllMenus;
   }
+  state.camera = scene && scene->camera;
+  state.inventory = inventory != nullptr;
+  if (inventory) {
+    const auto& data = inventory->GetRuntimeData();
+    state.loadTask = data.loadTask != nullptr;
+    state.loadedModels = static_cast<std::uint32_t>(data.loadedModels.size());
+    state.temporaryReference = inventory->tempRef != nullptr;
+  }
+  if (scene) {
+    state.lightSchemes =
+      static_cast<std::uint32_t>(scene->lightSchemes.size());
+    for (const auto& node : scene->menuObjects) {
+      if (node)
+        for (const auto& child : node->children)
+          if (child)
+            ++state.menuObjects;
+    }
+  }
+  return state;
+}
+
+bool rejectRender(RenderReason reason, HRESULT result = S_OK,
+                  const SceneState& state = {})
+{
+  policy.rendered(false);
+  if (reason == lastRenderReason)
+    return false;
+  lastRenderReason = reason;
+  logger().warn(
+    "Render rejected reason={} token={} revision={} status={} "
+    "hr=0x{:08x} ui={} pauses={} itemMenus={} customRendering={} "
+    "closing={} camera={} inventory={} loadTask={} models={} "
+    "tempRef={} lightSchemes={} menuObjects={}",
+    reasonName(reason), policy.token(), policy.revision(),
+    static_cast<std::int32_t>(policy.status(policy.token(), now())),
+    static_cast<std::uint32_t>(result), state.ui, state.pauses,
+    state.itemMenus, state.customRendering, state.closing, state.camera,
+    state.inventory, state.loadTask, state.loadedModels,
+    state.temporaryReference, state.lightSchemes, state.menuObjects);
   return true;
 }
 
@@ -192,19 +225,30 @@ void draw(IDXGISwapChain* swap)
     return;
   auto* scene = RE::UI3DSceneManager::GetSingleton();
   auto* inventory = RE::Inventory3DManager::GetSingleton();
-  if (!sceneIdle(scene, inventory)) {
-    policy.rendered(false);
+  const auto state = sceneState(scene, inventory);
+  const auto reason = sceneReason(state);
+  if (reason != RenderReason::none) {
+    rejectRender(reason, S_OK, state);
     return;
   }
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;
   ComPtr<ID3D11Texture2D> surface;
   ComPtr<ID3D11RenderTargetView> target;
-  if (FAILED(swap->GetDevice(IID_PPV_ARGS(device.GetAddressOf()))) ||
-      FAILED(swap->GetBuffer(0, IID_PPV_ARGS(surface.GetAddressOf()))) ||
-      FAILED(device->CreateRenderTargetView(surface.Get(), nullptr,
-                                            target.GetAddressOf()))) {
-    policy.rendered(false);
+  auto result = swap->GetDevice(IID_PPV_ARGS(device.GetAddressOf()));
+  if (FAILED(result)) {
+    rejectRender(RenderReason::swapDevice, result, state);
+    return;
+  }
+  result = swap->GetBuffer(0, IID_PPV_ARGS(surface.GetAddressOf()));
+  if (FAILED(result)) {
+    rejectRender(RenderReason::swapBuffer, result, state);
+    return;
+  }
+  result = device->CreateRenderTargetView(surface.Get(), nullptr,
+                                          target.GetAddressOf());
+  if (FAILED(result)) {
+    rejectRender(RenderReason::renderTarget, result, state);
     return;
   }
   device->GetImmediateContext(context.GetAddressOf());
@@ -212,7 +256,12 @@ void draw(IDXGISwapChain* swap)
   surface->GetDesc(&description);
   if (!context || !description.Width || !description.Height ||
       description.SampleDesc.Count != 1) {
-    policy.rendered(false);
+    if (rejectRender(RenderReason::surface, S_OK, state))
+      logger().warn(
+        "Surface context={} width={} height={} samples={} format={}",
+        context.Get() != nullptr, description.Width, description.Height,
+        description.SampleDesc.Count,
+        static_cast<unsigned>(description.Format));
     return;
   }
   D3DState saved(context.Get());
@@ -230,7 +279,10 @@ void draw(IDXGISwapChain* swap)
                std::abs(frustum.fTop - frustum.fBottom) / 2, policy.viewport(),
                policy.zoom());
   if (rig.radius <= 0) {
-    policy.rendered(false);
+    if (rejectRender(RenderReason::frustum, S_OK, state))
+      logger().warn(
+        "Invalid framing radius={} left={} right={} top={} bottom={}", radius,
+        frustum.fLeft, frustum.fRight, frustum.fTop, frustum.fBottom);
     return;
   }
   RE::NiMatrix3 rotation;
@@ -250,9 +302,8 @@ void draw(IDXGISwapChain* swap)
   if (needsPixelProbe) {
     needsPixelProbe = false;
     if (!probe(device.Get(), context.Get(), surface.Get(), description)) {
-      logger().warn("No visible geometry after native render; refusing ready "
-                    "status (menu render gate or unsupported surface)");
       policy.captureFailed();
+      rejectRender(RenderReason::noGeometry, S_OK, state);
       return;
     }
     logger().info("First-frame geometry pixels detected; Skyrim visual "
@@ -260,6 +311,7 @@ void draw(IDXGISwapChain* swap)
   }
   // Pixels alone do not prove correct skin, tint, outfit, clipping or facing.
   policy.rendered(true);
+  lastRenderReason = RenderReason::none;
 }
 
 HRESULT STDMETHODCALLTYPE present(IDXGISwapChain* swap, UINT interval,
@@ -335,6 +387,7 @@ bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
   const auto timestamp = now();
   if (!policy.select(token, revision, timestamp))
     return false;
+  lastRenderReason = RenderReason::none;
   model.reset();
   radius = 0;
   releaseSource();
@@ -386,6 +439,9 @@ bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
     radius = 0;
     return false;
   }
+  logger().info(
+    "Snapshot captured token={} revision={} actor=0x{:08x} radius={}", token,
+    revision, id, radius);
   return true;
 }
 bool frame(RE::StaticFunctionTag*, std::int32_t token, float yaw, float zoom)
