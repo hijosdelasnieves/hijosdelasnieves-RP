@@ -26,10 +26,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build map-build --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          New-Item -ItemType Directory -Force map-build/upstream, map-build/Data/SKSE/Plugins | Out-Null
+          New-Item -ItemType Directory -Force map-build/upstream, map-build/Release/Data/SKSE/Plugins | Out-Null
           Copy-Item upstream/SKSE/Plugins/MapMarkerFramework.dll map-build/upstream/
-          Copy-Item hdn-tailor-map/tests/versionlib-1-6-1170-0.bin map-build/Data/SKSE/Plugins/
-          if ((Get-FileHash map-build/Data/SKSE/Plugins/versionlib-1-6-1170-0.bin -Algorithm SHA256).Hash.ToLower() -ne 'c4093c569a3c83b26587f4b9ea4c55de9ae6e73b84a2af9fb3fbd30e2fe0d452') { throw 'Address Library mismatch' }
+          Copy-Item hdn-tailor-map/tests/versionlib-1-6-1170-0.bin map-build/Release/Data/SKSE/Plugins/
+          if ((Get-FileHash map-build/Release/Data/SKSE/Plugins/versionlib-1-6-1170-0.bin -Algorithm SHA256).Hash.ToLower() -ne 'c4093c569a3c83b26587f4b9ea4c55de9ae6e73b84a2af9fb3fbd30e2fe0d452') { throw 'Address Library mismatch' }
           Set-Location map-build
           ctest -C Release --verbose --timeout 30
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

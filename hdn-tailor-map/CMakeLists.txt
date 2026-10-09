@@ -9,6 +9,7 @@ add_library(MapMarkerFrameworkNeutral SHARED tests/Neutral.cpp)
 foreach(mode normal alt-hud rejected-hooks)
   add_test(NAME map-loader-${mode}
     COMMAND MapLoader "${CMAKE_BINARY_DIR}/upstream/MapMarkerFramework.dll" ${mode})
+  set_tests_properties(map-loader-${mode} PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:MapLoader>")
 endforeach()
 add_test(NAME map-recovery-loader
   COMMAND MapLoader "$<TARGET_FILE:MapMarkerFrameworkNeutral>" neutral)

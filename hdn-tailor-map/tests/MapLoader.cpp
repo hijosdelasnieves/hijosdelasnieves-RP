@@ -117,6 +117,8 @@ int main(int argc, char** argv)
   const std::string mode(argv[2]);
   const auto dllPath = std::filesystem::absolute(argv[1]);
   const auto loaded = LoadLibraryW(dllPath.c_str());
+  if (!loaded)
+    std::cerr << "LoadLibrary failed with Windows error " << GetLastError() << '\n';
   check(loaded != nullptr);
   auto metadata = reinterpret_cast<const std::uint32_t*>(GetProcAddress(loaded, "SKSEPlugin_Version"));
   using Load = bool (*)(const LoadInterface*);
