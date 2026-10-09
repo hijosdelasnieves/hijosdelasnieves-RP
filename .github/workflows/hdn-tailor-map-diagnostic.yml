@@ -26,7 +26,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: map-framework-build/vcpkg_installed
-          key: map-diag-vcpkg-000d1b-static-md-v1
+          key: map-diag-vcpkg-000d1b-static-md-v2
       - name: Pin build tools and sources
         shell: pwsh
         run: |
@@ -43,7 +43,12 @@ jobs:
       - name: Build pinned diagnostic framework
         shell: pwsh
         run: |
-          cmake -S map-framework -B map-framework-build -G 'Visual Studio 17 2022' -A x64 -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_MSVC_RUNTIME_LIBRARY='MultiThreaded$<$<CONFIG:Debug>:Debug>DLL' -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/map-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          $pkgConfig = @('C:/msys64/mingw64/bin/pkg-config.exe', 'C:/msys64/ucrt64/bin/pkg-config.exe', 'C:/msys64/usr/bin/pkg-config.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $pkgConfig) { throw 'Runner pkg-config unavailable; do not download obsolete MSYS package' }
+          $env:PKG_CONFIG = $pkgConfig
+          & $pkgConfig --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake -S map-framework -B map-framework-build -G 'Visual Studio 17 2022' -A x64 -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/hdn-tailor-map/diagnostic/triplets" -DCMAKE_MSVC_RUNTIME_LIBRARY='MultiThreaded$<$<CONFIG:Debug>:Debug>DLL' -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/map-vcpkg/scripts/buildsystems/vcpkg.cmake"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build map-framework-build --config Release --parallel 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

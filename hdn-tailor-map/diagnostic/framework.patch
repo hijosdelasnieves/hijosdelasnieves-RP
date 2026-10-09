@@ -160,7 +160,7 @@ index cd42507..a3fb539 100644
  	if (!_baseIndex) {
  		logger::critical("HUD didn't load correctly, can't load Map"sv);
 diff --git a/src/main/LocalMapManager.cpp b/src/main/LocalMapManager.cpp
-index e50b719..bec8f69 100644
+index e50b719..5bd06e5 100644
 --- a/src/main/LocalMapManager.cpp
 +++ b/src/main/LocalMapManager.cpp
 @@ -1,4 +1,5 @@
@@ -169,11 +169,12 @@ index e50b719..bec8f69 100644
  #include "Patch.h"
  #include "VendorManager.h"
  
-@@ -66,6 +67,12 @@ void LocalMapManager::AddVendorMarker(RE::BGSListForm* a_vendorList, RE::MARKER_
+@@ -66,6 +67,13 @@ void LocalMapManager::AddVendorMarker(RE::BGSListForm* a_vendorList, RE::MARKER_
  auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE::MARKER_TYPE
  {
  	auto type = _GetSpecialMarkerType(a_data);
-+	if (HdnDiagnostic::Take(HdnDiagnostic::doorCalls, 32)) {
++	const bool logCall = HdnDiagnostic::Take(HdnDiagnostic::doorCalls, 32);
++	if (logCall) {
 +		logger::info(
 +			"HDN-DIAG1 local callback handle={} originalType={}"sv,
 +			a_data->refHandle.native_handle(),
@@ -182,10 +183,16 @@ index e50b719..bec8f69 100644
  
  	if (type != RE::MARKER_TYPE::kDoor) {
  		return type;
-@@ -75,6 +82,15 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
+@@ -75,6 +83,21 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
  	RE::LookupReferenceByHandle(a_data->refHandle, objectRef);
  
  	auto teleport = objectRef ? objectRef->extraList.GetByType<RE::ExtraTeleport>() : nullptr;
++	if (logCall) {
++		logger::info(
++			"HDN-DIAG1 local resolvedRef={:08X} teleport={}"sv,
++			objectRef ? objectRef->GetFormID() : 0,
++			teleport != nullptr);
++	}
 +	const bool target = objectRef &&
 +		(objectRef->GetFormID() == 0x1A6F8 || objectRef->GetFormID() == 0x16649);
 +	const bool logTarget = target && HdnDiagnostic::Take(HdnDiagnostic::targetCalls, 64);
@@ -198,7 +205,7 @@ index e50b719..bec8f69 100644
  
  	if (!teleport) {
  		return type;
-@@ -90,10 +106,29 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
+@@ -90,10 +113,29 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
  	bool linkedIsInterior = linkedCell ? linkedCell->IsInteriorCell() : false;
  	bool isEntering = !isInterior && linkedIsInterior;
  	bool isLeaving = isInterior && !linkedIsInterior;
@@ -228,7 +235,7 @@ index e50b719..bec8f69 100644
  
  		if (isEntering) {
  			return marker;
-@@ -105,8 +140,8 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
+@@ -105,8 +147,8 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
  			auto player = RE::PlayerCharacter::GetSingleton();
  			auto currentLoc = player ? player->currentLocation : nullptr;
  

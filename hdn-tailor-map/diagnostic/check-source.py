@@ -14,10 +14,11 @@ def clean(text, modified=False):
         # All logger calls in this patch only contain diagnostic scalar/string reads.
         text = re.sub(r'logger::info\(\s*"HDN-DIAG1.*?\);', '', text, flags=re.S)
         text = re.sub(r'if \(HdnDiagnostic::Take\([^;]+?\)\) \{\s*\}', '', text)
-        text = re.sub(r'if \(logTarget\) \{\s*\}', '', text)
+        text = re.sub(r'if \((logTarget|logCall)\) \{\s*\}', '', text)
         text = re.sub(r'if \(fileName.string\(\) == "hdn-world-edits-test.json"\) \{\s*\}', '', text)
         text = re.sub(r'const bool target = .*?;', '', text, flags=re.S)
         text = re.sub(r'const bool logTarget = .*?;', '', text, flags=re.S)
+        text = re.sub(r'const bool logCall = .*?;', '', text, flags=re.S)
         text = re.sub(r'std::size_t (scanned|loaded) = 0;|\+\+(scanned|loaded);|HdnDiagnostic::ResetDoors\(\);', '', text)
     return re.sub(r'\s+', '', text)
 
