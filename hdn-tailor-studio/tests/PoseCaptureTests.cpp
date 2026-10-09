@@ -1,3 +1,4 @@
+#include "ActorAssembly.hpp"
 #include "PoseCapture.hpp"
 #include <cassert>
 #include <iostream>
@@ -39,6 +40,24 @@ Matrix quaternionMatrix(const CapturedBone& bone)
 }
 int main()
 {
+  assert(!actorAssembly);
+  {
+    const ActorAssemblyScope outer;
+    assert(actorAssembly);
+    {
+      const ActorAssemblyScope inner;
+      assert(actorAssembly);
+    }
+    assert(actorAssembly);
+  }
+  assert(!actorAssembly);
+  try {
+    const ActorAssemblyScope failedCapture;
+    assert(actorAssembly);
+    throw 1;
+  } catch (int) {
+    assert(!actorAssembly);
+  }
   const Matrix identity{ { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } } };
   const Matrix yaw90{ { { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, 1 } } };
   const Matrix yaw180{ { { -1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 } } };

@@ -1,6 +1,7 @@
 // HDN fork adapter, GPL-3.0. Original MRF API exports remain in API.cpp.
 // No hooks, global UI, background thread, or automatic animation worker.
 #include "API.h"
+#include "ActorAssembly.hpp"
 #include "FrameworkView.hpp"
 #include "PoseCapture.hpp"
 #include "Runtime.hpp"
@@ -96,6 +97,7 @@ FUNCTION_PREFIX IMesh* HdnMesh_CaptureActor(RE::Actor* actor)
   if (!capturePose(root, valueTransform(root->world), pose) ||
       pose.names.empty())
     return nullptr;
+  const hdn::studio::ActorAssemblyScope assemblyScope;
   const auto mesh =
     MeshRenderingFrameworkAPI::Internal::CreateFromActor(actor, 1024, 1536);
   if (!mesh)

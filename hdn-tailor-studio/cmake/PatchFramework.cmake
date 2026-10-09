@@ -10,6 +10,17 @@ endfunction()
 function(hdn_patch_framework filename)
   file(READ "${meshframework_SOURCE_DIR}/src/${filename}" text)
   if(filename STREQUAL "Mesh.cpp")
+    hdn_replace("#include \"Mesh.h\"" "#include \"Mesh.h\"\n#include \"ActorAssembly.hpp\"")
+    hdn_replace([=[    RE::NiMatrix3 GetInventoryRotation(nifly::NifFile& file)
+    {
+        RE::NiMatrix3 rotation;]=] [=[    RE::NiMatrix3 GetInventoryRotation(nifly::NifFile& file)
+    {
+        RE::NiMatrix3 rotation;
+        if (hdn::studio::actorAssembly) {
+            // Canonical actor coordinates for EVERY component, including
+            // bind frames and poses. Never inherit a garment's BSInvMarker.
+            return rotation;
+        }]=])
     hdn_replace("if (size <= 0)" "if (size <= 0 || size > 64 * 1024 * 1024)")
     hdn_replace("stream.stream->totalSize == 0)"
       "stream.stream->totalSize == 0 || stream.stream->totalSize > 64 * 1024 * 1024)")
