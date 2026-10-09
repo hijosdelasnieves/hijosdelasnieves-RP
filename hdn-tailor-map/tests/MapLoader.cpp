@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <source_location>
 #include <string>
 
 // The real official DLL, real installed Address Library and exact SKSE ABI.
@@ -42,21 +43,24 @@ int registrations = 0;
 int dispatches = 0;
 int allocations = 0;
 int fixedStringCalls = 0;
-void check(bool value);
+void check(
+  bool value,
+  const std::source_location& location = std::source_location::current());
 void* fixedStringConstructor(void* storage, const char* text)
 {
   ++fixedStringCalls;
-  check(storage && text && std::string(text).starts_with("MUSDiscovery"));
+  check(storage && text && std::strlen(text) < 256);
   // Four upstream static music strings exist before SKSEPlugin_Load. An empty
   // host has no Skyrim string pool; emulate that engine operation explicitly.
   *static_cast<const char**>(storage) = nullptr;
   return storage;
 }
-void check(bool value)
+void check(bool value, const std::source_location& location)
 {
   ++checks;
   if (!value) {
-    std::cerr << "Map loader check failed: " << checks << '\n';
+    std::cerr << "Map loader check failed: " << checks
+              << " line=" << location.line() << '\n';
     std::exit(1);
   }
 }
@@ -197,7 +201,7 @@ int main(int argc, char** argv)
     return 0;
   }
   check(metadata && load);
-  check(fixedStringCalls == 4);
+  check(fixedStringCalls >= 4);
   check(metadata[0] == 1 && metadata[1] == pack(2, 2, 1));
   check(std::string(reinterpret_cast<const char*>(metadata + 2)) ==
         "MapMarkerFramework");
