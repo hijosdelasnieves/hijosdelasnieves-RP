@@ -41,6 +41,17 @@ int checks = 0;
 int registrations = 0;
 int dispatches = 0;
 int allocations = 0;
+int fixedStringCalls = 0;
+void check(bool value);
+void* fixedStringConstructor(void* storage, const char* text)
+{
+  ++fixedStringCalls;
+  check(storage && text && std::string(text).starts_with("MUSDiscovery"));
+  // Four upstream static music strings exist before SKSEPlugin_Load. An empty
+  // host has no Skyrim string pool; emulate that engine operation explicitly.
+  *static_cast<const char**>(storage) = nullptr;
+  return storage;
+}
 void check(bool value)
 {
   ++checks;
@@ -156,6 +167,19 @@ int main(int argc, char** argv)
   const std::string mode(argv[2]);
   const auto dllPath = std::filesystem::absolute(argv[1]);
   AddVectoredExceptionHandler(1, exceptionTrace);
+  if (mode != "neutral") {
+    auto ctor = image(0xcec5d0); // Address Library69161: BSFixedString::Ctor8.
+    DWORD previous = 0;
+    check(VirtualProtect(ctor, 16, PAGE_EXECUTE_READWRITE, &previous) != 0);
+    ctor[0] = 0x48;
+    ctor[1] = 0xB8;
+    const auto target =
+      reinterpret_cast<std::uintptr_t>(fixedStringConstructor);
+    std::memcpy(ctor + 2, &target, sizeof(target));
+    ctor[10] = 0xFF;
+    ctor[11] = 0xE0;
+    check(FlushInstructionCache(GetCurrentProcess(), ctor, 12) != 0);
+  }
   const auto loaded = LoadLibraryW(dllPath.c_str());
   if (!loaded)
     std::cerr << "LoadLibrary failed with Windows error " << GetLastError()
@@ -173,6 +197,7 @@ int main(int argc, char** argv)
     return 0;
   }
   check(metadata && load);
+  check(fixedStringCalls == 4);
   check(metadata[0] == 1 && metadata[1] == pack(2, 2, 1));
   check(std::string(reinterpret_cast<const char*>(metadata + 2)) ==
         "MapMarkerFramework");
