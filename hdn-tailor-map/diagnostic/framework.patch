@@ -160,7 +160,7 @@ index cd42507..a3fb539 100644
  	if (!_baseIndex) {
  		logger::critical("HUD didn't load correctly, can't load Map"sv);
 diff --git a/src/main/LocalMapManager.cpp b/src/main/LocalMapManager.cpp
-index e50b719..5bd06e5 100644
+index e50b719..3528fbb 100644
 --- a/src/main/LocalMapManager.cpp
 +++ b/src/main/LocalMapManager.cpp
 @@ -1,4 +1,5 @@
@@ -177,7 +177,7 @@ index e50b719..5bd06e5 100644
 +	if (logCall) {
 +		logger::info(
 +			"HDN-DIAG1 local callback handle={} originalType={}"sv,
-+			a_data->refHandle.native_handle(),
++			a_data->refHandle,
 +			static_cast<unsigned>(type));
 +	}
  
