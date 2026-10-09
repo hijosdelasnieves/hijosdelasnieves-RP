@@ -1,10 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
-project(HdnTailorStudio VERSION 0.2.1 LANGUAGES CXX)
+project(HdnTailorStudio VERSION 0.2.2 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(HDN_BUILD_PLUGIN "Build the experimental Windows SKSE plugin" ${WIN32})
 option(HDN_BUILD_ISOLATED "Build the independent NIF mesh backend" OFF)
 enable_testing()
+add_executable(studio-pose-capture-tests tests/PoseCaptureTests.cpp)
+target_include_directories(studio-pose-capture-tests PRIVATE include)
+target_compile_options(studio-pose-capture-tests PRIVATE
+  $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>
+  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UNDEBUG>)
+add_test(NAME studio-pose-capture COMMAND studio-pose-capture-tests)
 add_executable(studio-policy-tests tests/PolicyTests.cpp)
 target_include_directories(studio-policy-tests PRIVATE include)
 add_test(NAME studio-policy COMMAND studio-policy-tests)

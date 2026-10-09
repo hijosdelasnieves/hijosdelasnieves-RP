@@ -2,54 +2,54 @@
 // No hooks, global UI, background thread, or automatic animation worker.
 #include "API.h"
 #include "FrameworkView.hpp"
+#include "PoseCapture.hpp"
 #include "Runtime.hpp"
 
 namespace {
 bool loaded = false;
 using IMesh = MeshRenderingFrameworkAPI::Internal::IMesh;
-struct Pose
+hdn::studio::PoseTransform valueTransform(const RE::NiTransform& transform)
 {
-  std::vector<std::string> names;
-  std::vector<std::int16_t> parents;
-  std::vector<MeshRenderingFrameworkAPI::BoneTransform> transforms;
-};
-bool capturePose(RE::NiAVObject* object, std::int16_t parent, Pose& pose,
-                 unsigned depth = 0)
+  hdn::studio::PoseTransform result;
+  for (size_t row = 0; row < 3; ++row)
+    for (size_t column = 0; column < 3; ++column)
+      result.rotation[row][column] = transform.rotate.entry[row][column];
+  result.translation = { transform.translate.x, transform.translate.y,
+                         transform.translate.z };
+  result.scale = transform.scale;
+  return result;
+}
+bool capturePose(RE::NiAVObject* object,
+                 const hdn::studio::PoseTransform& root,
+                 hdn::studio::CapturedPose& pose, unsigned depth = 0)
 {
   if (!object)
     return true;
-  if (depth > 64 || pose.names.size() >= 4096)
+  if (depth > 64 || pose.names.size() >= hdn::studio::CapturedPose::maxBones)
     return false;
-  const auto index = static_cast<std::int16_t>(pose.names.size());
-  pose.names.emplace_back(object->name.c_str() ? object->name.c_str() : "");
-  pose.parents.push_back(parent);
-  auto& transform = pose.transforms.emplace_back();
-  // The top skeleton root is model-local, not the actor's world transform.
-  if (parent >= 0) {
-    const RE::NiQuaternion rotation(object->local.rotate);
-    transform.translation[0] = object->local.translate.x;
-    transform.translation[1] = object->local.translate.y;
-    transform.translation[2] = object->local.translate.z;
-    transform.rotation[0] = rotation.x;
-    transform.rotation[1] = rotation.y;
-    transform.rotation[2] = rotation.z;
-    transform.rotation[3] = rotation.w;
-    for (float& scale : transform.scale)
-      scale = object->local.scale;
+  const auto name = object->name.c_str();
+  if (name && name[0] && !pose.add(name, root, valueTransform(object->world)))
+    return false;
+  const auto flattened = netimmerse_cast<RE::BSFlattenedBoneTree*>(object);
+  if (flattened) {
+    const auto& data = flattened->GetRuntimeData();
+    if (!data.boneEntries || !data.numBones ||
+        data.numBones > hdn::studio::CapturedPose::maxBones)
+      return false;
+    // Skyrim optimises twists, fingers and clothing bones out of NiNode
+    // children. A null entry.node is a VALID bone, not something to omit.
+    for (std::uint32_t i = 0; i < data.numBones; ++i) {
+      const auto& entry = data.boneEntries[i];
+      const auto boneName = entry.nodeName.c_str();
+      const auto& world = entry.node ? entry.node->world : entry.world;
+      if (!boneName || !pose.add(boneName, root, valueTransform(world)))
+        return false;
+    }
   }
-  for (const float value : transform.translation)
-    if (!std::isfinite(value) || std::abs(value) > 10000)
-      return false;
-  for (const float value : transform.rotation)
-    if (!std::isfinite(value))
-      return false;
-  for (const float value : transform.scale)
-    if (!std::isfinite(value) || value <= 0 || value > 10)
-      return false;
   const auto node = object->AsNode();
   if (node)
     for (const auto& child : node->GetChildren())
-      if (!capturePose(child.get(), index, pose, depth + 1))
+      if (!capturePose(child.get(), root, pose, depth + 1))
         return false;
   return true;
 }
@@ -92,8 +92,9 @@ FUNCTION_PREFIX IMesh* HdnMesh_CaptureActor(RE::Actor* actor)
   const auto root = actor->Get3D(false)->GetObjectByName("NPC Root [Root]");
   if (!root)
     return nullptr;
-  Pose pose;
-  if (!capturePose(root, -1, pose) || pose.names.empty())
+  hdn::studio::CapturedPose pose;
+  if (!capturePose(root, valueTransform(root->world), pose) ||
+      pose.names.empty())
     return nullptr;
   const auto mesh =
     MeshRenderingFrameworkAPI::Internal::CreateFromActor(actor, 1024, 1536);
@@ -103,8 +104,18 @@ FUNCTION_PREFIX IMesh* HdnMesh_CaptureActor(RE::Actor* actor)
   names.reserve(pose.names.size());
   for (const auto& name : pose.names)
     names.push_back(name.c_str());
+  std::vector<MeshRenderingFrameworkAPI::BoneTransform> transforms;
+  transforms.reserve(pose.transforms.size());
+  for (const auto& captured : pose.transforms) {
+    auto& bone = transforms.emplace_back();
+    std::copy(captured.translation.begin(), captured.translation.end(),
+              bone.translation);
+    std::copy(captured.rotation.begin(), captured.rotation.end(),
+              bone.rotation);
+    std::copy(captured.scale.begin(), captured.scale.end(), bone.scale);
+  }
   if (!RenderManager::SetBoneLocalPose(
-        mesh, names.data(), pose.parents.data(), pose.transforms.data(),
+        mesh, names.data(), pose.parents.data(), transforms.data(),
         static_cast<std::uint32_t>(names.size()))) {
     RenderManager::Delete(mesh);
     return nullptr;

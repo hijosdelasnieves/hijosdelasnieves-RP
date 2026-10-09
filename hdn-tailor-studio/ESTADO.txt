@@ -1,10 +1,17 @@
-HDN — Probador independiente 0.2.1 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
+HDN — Probador independiente 0.2.2 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
+
+Captura completa BSFlattenedBoneTree, incluidos huesos sin NiNode (dedos,
+antebrazos/twists y ropa). Frames globales relativos al root, independientes
+del orden de padres y del yaw/escala/posición de mundo; solo valores propios.
+El cliente debe cerrar el token ANTES de retirar fuente, incluso desde la X
+y con errores de limpieza. Pruebas de código NO equivalen a validación visual.
 
 Arranque diferido: DataLoaded y ApiVersion NO inicializan GPU ni Present.
 Solo BeginSession agenda una tarea del hilo principal para una sesión viva
 con el jugador 3D cargado y fuera de LoadingMenu. Tareas obsoletas se cancelan.
 Registro por etapas de la inicialización para investigar bloqueos reales.
-La composición cliente debe partir de DEV 2026.10.09-002122, no de 233854.
+La composición cliente debe partir del DEV publicado; base de esta revisión
+2026.10.09-082806. No recuperar clientes nocturnos ni configuración antigua.
 
 Build con -DHDN_BUILD_ISOLATED=ON: HdnTailorStudio.dll + copia propia GPL
 MeshRenderingFramework.dll. API2 exclusiva; EnableIsolatedMeshBackend=1
