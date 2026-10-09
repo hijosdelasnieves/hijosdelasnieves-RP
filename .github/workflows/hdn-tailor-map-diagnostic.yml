@@ -1,0 +1,75 @@
+name: HDN - Mapa diagnostico (solo artefactos)
+on:
+  push:
+    branches: [codex/probador-privado-dev-20261008]
+    paths: [hdn-tailor-map/**, .github/workflows/hdn-tailor-map-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  windows-diagnostic:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Exit-9B/MapMarkerFramework
+          ref: 829aa3e5b382d8f64dacff4a24b7cad561062e6e
+          submodules: recursive
+          path: map-framework
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: 000d1bda1ffa95a73e0b40334fa4103d6f4d3d48
+          path: map-vcpkg
+      - uses: actions/cache@v4
+        with:
+          path: map-framework-build/vcpkg_installed
+          key: map-diag-vcpkg-000d1b-static-md-v1
+      - name: Pin build tools and sources
+        shell: pwsh
+        run: |
+          python -m pip install cmake==3.31.6
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C map-framework/external/CommonLibSSE rev-parse HEAD) -ne 'e0f14fd29b09f0985edfb655613edf5020806057') { throw 'CommonLib pin mismatch' }
+          if ((git -C map-framework/tools/SKSE-CMakeModules rev-parse HEAD) -ne '4a36a3f9c9e38774c5851d8a4cda2d539b6febc3') { throw 'CMake modules pin mismatch' }
+          git -C map-framework apply ../hdn-tailor-map/diagnostic/framework.patch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python hdn-tailor-map/diagnostic/check-source.py map-framework
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./map-vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build pinned diagnostic framework
+        shell: pwsh
+        run: |
+          cmake -S map-framework -B map-framework-build -G 'Visual Studio 17 2022' -A x64 -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_MSVC_RUNTIME_LIBRARY='MultiThreaded$<$<CONFIG:Debug>:Debug>DLL' -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/map-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build map-framework-build --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and test real Windows loader
+        shell: pwsh
+        run: |
+          cmake -S hdn-tailor-map -B map-build -G 'Visual Studio 17 2022' -A x64 -DHDN_DIAG_HEADER_DIR="${{ github.workspace }}/map-framework/src/main"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build map-build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force map-build/upstream, map-build/Release/Data/SKSE/Plugins | Out-Null
+          Copy-Item map-framework-build/Release/MapMarkerFramework.dll map-build/upstream/
+          Copy-Item hdn-tailor-map/tests/versionlib-1-6-1170-0.bin map-build/Release/Data/SKSE/Plugins/
+          if ((Get-FileHash map-build/Release/Data/SKSE/Plugins/versionlib-1-6-1170-0.bin -Algorithm SHA256).Hash.ToLower() -ne 'c4093c569a3c83b26587f4b9ea4c55de9ae6e73b84a2af9fb3fbd30e2fe0d452') { throw 'Address Library mismatch' }
+          Set-Location map-build
+          ctest -C Release --verbose --timeout 30
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage diagnostic and test evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force map-diagnostic-artifact | Out-Null
+          Copy-Item map-framework-build/Release/MapMarkerFramework.dll map-diagnostic-artifact/
+          Copy-Item map-framework-build/Release/MapMarkerFramework.pdb map-diagnostic-artifact/
+          Copy-Item map-build/Testing/Temporary/LastTest.log map-diagnostic-artifact/
+          git rev-parse HEAD | Set-Content map-diagnostic-artifact/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HdnTailorMap-DIAG1-TESTED-${{ github.sha }}
+          path: map-diagnostic-artifact/
+          retention-days: 14

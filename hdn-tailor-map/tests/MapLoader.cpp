@@ -264,7 +264,7 @@ int main(int argc, char** argv)
   check(dispatches == 1);
   check(FreeLibrary(loaded) != 0);
   std::cout << checks
-            << " official DLL + SKSE2.2.6 / runtime1170 / real Address "
+            << " plugin DLL + SKSE2.2.6 / runtime1170 / real Address "
                "Library checks PASS ("
             << mode << ")\n";
   std::cout << "Synthetic hooks/empty engine, NOT a Skyrim rendering "

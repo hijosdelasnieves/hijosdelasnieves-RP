@@ -1,0 +1,357 @@
+diff --git a/src/main/HdnDiagnostic.h b/src/main/HdnDiagnostic.h
+new file mode 100644
+index 0000000..712fc24
+--- /dev/null
++++ b/src/main/HdnDiagnostic.h
+@@ -0,0 +1,27 @@
++#pragma once
++#include <atomic>
++
++// Diagnostic only: no engine calls, hooks, assignments, or marker policy.
++namespace HdnDiagnostic
++{
++	inline std::atomic<unsigned> doorCalls{ 0 };
++	inline std::atomic<unsigned> targetCalls{ 0 };
++	inline std::atomic<unsigned> importCalls{ 0 };
++
++	inline bool Take(std::atomic<unsigned>& a_count, unsigned a_limit)
++	{
++		auto count = a_count.load(std::memory_order_relaxed);
++		while (count < a_limit) {
++			if (a_count.compare_exchange_weak(count, count + 1, std::memory_order_relaxed)) {
++				return true;
++			}
++		}
++		return false;
++	}
++
++	inline void ResetDoors()
++	{
++		doorCalls.store(0, std::memory_order_relaxed);
++		targetCalls.store(0, std::memory_order_relaxed);
++	}
++}
+diff --git a/src/main/ImportData.cpp b/src/main/ImportData.cpp
+index 82c9e1a..bdb7370 100644
+--- a/src/main/ImportData.cpp
++++ b/src/main/ImportData.cpp
+@@ -1,4 +1,5 @@
+ #include "ImportData.h"
++#include "HdnDiagnostic.h"
+ #include "SWF/TagFactory.h"
+ #include "Settings.h"
+ #include "Util/GFxUtil.h"
+@@ -131,12 +132,25 @@ auto ImportData::LoadMovie(const std::string& a_sourcePath) -> RE::GFxMovieDefIm
+ 	const auto scaleformManager = RE::BSScaleformManager::GetSingleton();
+ 	const auto loader = scaleformManager->loader;
+ 	auto movieDef = loader->CreateMovie(a_sourcePath.data());
++	if (HdnDiagnostic::Take(HdnDiagnostic::importCalls, 128)) {
++		logger::info(
++			"HDN-DIAG1 import menu={} path={} movieCreated={}"sv,
++			static_cast<unsigned>(_menuType),
++			a_sourcePath,
++			movieDef != nullptr);
++	}
+ 	if (!movieDef) {
+ 		logger::error("Failed to create movie from {}"sv, a_sourcePath);
+ 		return nullptr;
+ 	}
+ 
+ 	auto movieDefImpl = Util::GetGFxMovieDefImpl(movieDef);
++	if (HdnDiagnostic::Take(HdnDiagnostic::importCalls, 128)) {
++		logger::info(
++			"HDN-DIAG1 import path={} movieImpl={}"sv,
++			a_sourcePath,
++			movieDefImpl != nullptr);
++	}
+ 
+ 	_importedMovies[a_sourcePath] = movieDefImpl;
+ 
+@@ -158,6 +172,14 @@ void ImportData::LoadIcons()
+ 
+ 		for (auto& iconId : iconIds) {
+ 			auto icon = movie->GetResource(iconId.exportName.data());
++			if (HdnDiagnostic::Take(HdnDiagnostic::importCalls, 128)) {
++				logger::info(
++					"HDN-DIAG1 export path={} name={} found={} sprite={}"sv,
++					sourcePath,
++					iconId.exportName,
++					icon != nullptr,
++					icon && icon->GetResourceType() == ResourceType::kSpriteDef);
++			}
+ 			if (icon && icon->GetResourceType() == ResourceType::kSpriteDef) {
+ 				_icons[iconId.iconType][iconId.index] = static_cast<RE::GFxSpriteDef*>(icon);
+ 			}
+@@ -222,12 +244,12 @@ void ImportData::ImportResources()
+ 
+ 		std::uint32_t movieIndex = _movieIndices.at(sourcePath);
+ 
+-		auto importInfo = new (loadTaskData->allocator.Alloc(sizeof(RE::GFxImportNode)))
+-			RE::GFxImportNode{
+-				.filename = sourcePath.data(),
+-				.frame = static_cast<std::uint32_t>(loadTaskData->importFrames.GetSize()),
+-				.movieIndex = movieIndex,
+-			};
++		auto importInfo = new (
++			loadTaskData->allocator.Alloc(sizeof(RE::GFxImportNode))) RE::GFxImportNode{
++			.filename = sourcePath.data(),
++			.frame = static_cast<std::uint32_t>(loadTaskData->importFrames.GetSize()),
++			.movieIndex = movieIndex,
++		};
+ 
+ 		for (auto& iconId : iconIds) {
+ 			RE::GFxResourceID resourceId;
+diff --git a/src/main/ImportManager.cpp b/src/main/ImportManager.cpp
+index cd42507..a3fb539 100644
+--- a/src/main/ImportManager.cpp
++++ b/src/main/ImportManager.cpp
+@@ -1,4 +1,5 @@
+ #include "ImportManager.h"
++#include "HdnDiagnostic.h"
+ #include "MapConfigLoader.h"
+ #include "Patch.h"
+ #include "Settings.h"
+@@ -134,6 +135,14 @@ void ImportManager::SetupHUDMenu(RE::GFxMovieView* a_movieView)
+ 	std::size_t iconCount = insertPos - locationMarkers + 1;
+ 
+ 	assert(iconCount >= 67);
++	logger::info(
++		"HDN-DIAG1 HUD icons={} iconCount={} previousBase={} labels=[{},{}] insert={}"sv,
++		_customIcons.size(),
++		iconCount,
++		_baseIndex,
++		locationMarkers,
++		undiscoveredMarkers,
++		insertPos);
+ 
+ 	// HUD should only load once, but guard here just in case
+ 	if (!_baseIndex) {
+@@ -189,6 +198,11 @@ void ImportManager::SetupHUDMenu(RE::GFxMovieView* a_movieView)
+ 
+ void ImportManager::SetupMapMenu(RE::GFxMovieView* a_movieView)
+ {
++	HdnDiagnostic::ResetDoors();
++	logger::info(
++		"HDN-DIAG1 map icons={} baseIndex={}; door budgets reset [32 raw,64 target]"sv,
++		_customIcons.size(),
++		_baseIndex);
+ 	assert(a_movieView);
+ 	auto movieDef = a_movieView->GetMovieDef();
+ 	class MarkerArtFinder : public RE::GFxMovieDef::ImportVisitor
+@@ -223,6 +237,7 @@ void ImportManager::SetupMapMenu(RE::GFxMovieView* a_movieView)
+ 
+ 	movieDef = markerArtFinder.movieDef;
+ 	auto mapMarker = markerArtFinder.mapMarker;
++	logger::info("HDN-DIAG1 map markerArtFound={}"sv, mapMarker != nullptr);
+ 
+ 	if (!mapMarker) {
+ 		logger::error("SkyUI Map is not installed, can't add map markers"sv);
+@@ -237,6 +252,12 @@ void ImportManager::SetupMapMenu(RE::GFxMovieView* a_movieView)
+ 
+ 	std::size_t undiscoveredOffset = static_cast<size_t>(undiscovered - discovered);
+ 	std::size_t insertPos = static_cast<size_t>(discovered + _baseIndex);
++	logger::info(
++		"HDN-DIAG1 map labels=[{},{}] insert={} frames={}"sv,
++		discovered,
++		undiscovered,
++		insertPos,
++		mapMarker->frameCount);
+ 
+ 	if (!_baseIndex) {
+ 		logger::critical("HUD didn't load correctly, can't load Map"sv);
+diff --git a/src/main/LocalMapManager.cpp b/src/main/LocalMapManager.cpp
+index e50b719..bec8f69 100644
+--- a/src/main/LocalMapManager.cpp
++++ b/src/main/LocalMapManager.cpp
+@@ -1,4 +1,5 @@
+ #include "LocalMapManager.h"
++#include "HdnDiagnostic.h"
+ #include "Patch.h"
+ #include "VendorManager.h"
+ 
+@@ -66,6 +67,12 @@ void LocalMapManager::AddVendorMarker(RE::BGSListForm* a_vendorList, RE::MARKER_
+ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE::MARKER_TYPE
+ {
+ 	auto type = _GetSpecialMarkerType(a_data);
++	if (HdnDiagnostic::Take(HdnDiagnostic::doorCalls, 32)) {
++		logger::info(
++			"HDN-DIAG1 local callback handle={} originalType={}"sv,
++			a_data->refHandle.native_handle(),
++			static_cast<unsigned>(type));
++	}
+ 
+ 	if (type != RE::MARKER_TYPE::kDoor) {
+ 		return type;
+@@ -75,6 +82,15 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
+ 	RE::LookupReferenceByHandle(a_data->refHandle, objectRef);
+ 
+ 	auto teleport = objectRef ? objectRef->extraList.GetByType<RE::ExtraTeleport>() : nullptr;
++	const bool target = objectRef &&
++		(objectRef->GetFormID() == 0x1A6F8 || objectRef->GetFormID() == 0x16649);
++	const bool logTarget = target && HdnDiagnostic::Take(HdnDiagnostic::targetCalls, 64);
++	if (logTarget) {
++		logger::info(
++			"HDN-DIAG1 door ref={:08X} teleport={}"sv,
++			objectRef->GetFormID(),
++			teleport != nullptr);
++	}
+ 
+ 	if (!teleport) {
+ 		return type;
+@@ -90,10 +106,29 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
+ 	bool linkedIsInterior = linkedCell ? linkedCell->IsInteriorCell() : false;
+ 	bool isEntering = !isInterior && linkedIsInterior;
+ 	bool isLeaving = isInterior && !linkedIsInterior;
++	if (logTarget) {
++		logger::info(
++			"HDN-DIAG1 door ref={:08X} linked={:08X} location={:08X} cells=[{:08X},{:08X}] interiors=[{},{}] entering={} leaving={}"sv,
++			objectRef->GetFormID(),
++			linkedDoor->GetFormID(),
++			location ? location->GetFormID() : 0,
++			cell ? cell->GetFormID() : 0,
++			linkedCell ? linkedCell->GetFormID() : 0,
++			isInterior,
++			linkedIsInterior,
++			isEntering,
++			isLeaving);
++	}
+ 
+ 	if (location) {
+ 		auto localMapManager = GetSingleton();
+ 		auto marker = localMapManager->GetLocalMapMarker(location);
++		if (logTarget) {
++			logger::info(
++				"HDN-DIAG1 door marker={} original={}"sv,
++				static_cast<unsigned>(marker),
++				static_cast<unsigned>(type));
++		}
+ 
+ 		if (isEntering) {
+ 			return marker;
+@@ -105,8 +140,8 @@ auto LocalMapManager::GetSpecialMarkerType(RE::SpecialMarkerData* a_data) -> RE:
+ 			auto player = RE::PlayerCharacter::GetSingleton();
+ 			auto currentLoc = player ? player->currentLocation : nullptr;
+ 
+-			auto currentLocMarker =
+-				currentLoc ? localMapManager->GetLocalMapMarker(currentLoc)
++			auto currentLocMarker = currentLoc
++				? localMapManager->GetLocalMapMarker(currentLoc)
+ 				: RE::MARKER_TYPE::kDoor;
+ 
+ 			return marker != currentLocMarker ? marker : RE::MARKER_TYPE::kDoor;
+diff --git a/src/main/MapConfigLoader.cpp b/src/main/MapConfigLoader.cpp
+index b8a3783..5cab493 100644
+--- a/src/main/MapConfigLoader.cpp
++++ b/src/main/MapConfigLoader.cpp
+@@ -17,8 +17,11 @@ void MapConfigLoader::LoadAll()
+ {
+ 	const auto dataHandler = RE::TESDataHandler::GetSingleton();
+ 	if (!dataHandler) {
++		logger::info("HDN-DIAG1 config dataHandler=false"sv);
+ 		return;
+ 	}
++	std::size_t scanned = 0;
++	std::size_t loaded = 0;
+ 
+ 	for (auto file : dataHandler->files) {
+ 		if (!file) {
+@@ -30,13 +33,27 @@ void MapConfigLoader::LoadAll()
+ 		auto mapMarkerFile = std::filesystem::path{ "MapMarkers" } / fileName;
+ 
+ 		RE::BSResourceNiBinaryStream fileStream{ mapMarkerFile.string() };
++		++scanned;
++		if (fileName.string() == "hdn-world-edits-test.json") {
++			logger::info(
++				"HDN-DIAG1 config candidate={} streamGood={}"sv,
++				mapMarkerFile.string(),
++				fileStream.good());
++		}
+ 
+ 		if (!fileStream.good()) {
+ 			continue;
+ 		}
+ 
+ 		LoadFromFile(fileName.string(), fileStream);
++		++loaded;
+ 	}
++	logger::info(
++		"HDN-DIAG1 config scanned={} loaded={} icons={} locations={}"sv,
++		scanned,
++		loaded,
++		_iconNames.size(),
++		_locationMarkers.size());
+ }
+ 
+ RE::BSResourceNiBinaryStream& operator>>(RE::BSResourceNiBinaryStream& a_sin, Json::Value& a_root)
+@@ -67,6 +84,11 @@ void MapConfigLoader::LoadFromFile(
+ {
+ 	Json::Value root;
+ 	a_fileStream >> root;
++	logger::info(
++		"HDN-DIAG1 config parsed={} icons={} localMarkers={}"sv,
++		a_fileName,
++		root["iconDefinitions"].size(),
++		root["localMapMarkers"].size());
+ 
+ 	auto importManager = ImportManager::GetSingleton();
+ 	auto discoveryMusicManager = DiscoveryMusicManager::GetSingleton();
+@@ -109,6 +131,13 @@ void MapConfigLoader::LoadFromFile(
+ 					->AddCustomIcon(path, exportName, exportNameUndiscovered, scale, hideFromHUD);
+ 
+ 				_iconNames[name] = _lastIcon++;
++				logger::info(
++					"HDN-DIAG1 icon name={} path={} exports=[{},{}] relativeIndex={}"sv,
++					name,
++					path,
++					exportName,
++					exportNameUndiscovered,
++					_iconNames[name]);
+ 
+ 				if (!discoveryMusic.empty()) {
+ 					_discoveryMusic[name] = discoveryMusic;
+@@ -216,6 +245,11 @@ void MapConfigLoader::LoadFromFile(
+ 
+ 			if (!location.empty()) {
+ 				auto locRef = skyrim_cast<RE::BGSLocation*>(Util::GetFormFromIdentifier(location));
++				logger::info(
++					"HDN-DIAG1 location identifier={} resolved={:08X} iconName={}"sv,
++					location,
++					locRef ? locRef->GetFormID() : 0,
++					iconName);
+ 
+ 				if (!locRef) {
+ 					logger::warn(
+@@ -263,6 +297,10 @@ void MapConfigLoader::LoadFromFile(
+ 
+ void MapConfigLoader::UpdateMarkers(std::uint32_t a_customIconIndex) const
+ {
++	logger::info(
++		"HDN-DIAG1 update baseIndex={} locations={}"sv,
++		a_customIconIndex,
++		_locationMarkers.size());
+ 	for (auto& [markerRef, marker] : _mapMarkers) {
+ 		if (!markerRef) {
+ 			continue;
+@@ -311,6 +349,10 @@ void MapConfigLoader::UpdateMarkers(std::uint32_t a_customIconIndex) const
+ 		}
+ 
+ 		localMapManager->AddLocationMarker(location, markerType);
++		logger::info(
++			"HDN-DIAG1 assignment location={:08X} markerType={}"sv,
++			location->GetFormID(),
++			static_cast<unsigned>(markerType));
+ 	}
+ 
+ 	for (auto& [vendorList, marker] : _vendorMarkers) {
+diff --git a/src/main/SKSEPlugin.cpp b/src/main/SKSEPlugin.cpp
+index 77fa195..498b2ca 100644
+--- a/src/main/SKSEPlugin.cpp
++++ b/src/main/SKSEPlugin.cpp
+@@ -54,6 +54,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
+ {
+ 	InitializeLog();
+ 	logger::info("{} v{}"sv, Plugin::NAME, Plugin::VERSION.string());
++	logger::info("HDN-DIAG1 upstream=2.2.1 diagnostic-only; no marker or door changes"sv);
+ 
+ 	SKSE::Init(a_skse);
+ 
