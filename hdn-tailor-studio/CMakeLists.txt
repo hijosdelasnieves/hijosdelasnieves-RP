@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(HdnTailorStudio VERSION 0.2.0 LANGUAGES CXX)
+project(HdnTailorStudio VERSION 0.2.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(HDN_BUILD_PLUGIN "Build the experimental Windows SKSE plugin" ${WIN32})

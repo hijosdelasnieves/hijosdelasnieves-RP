@@ -1,4 +1,10 @@
-HDN — Probador independiente 0.2.0 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
+HDN — Probador independiente 0.2.1 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
+
+Arranque diferido: DataLoaded y ApiVersion NO inicializan GPU ni Present.
+Solo BeginSession agenda una tarea del hilo principal para una sesión viva
+con el jugador 3D cargado y fuera de LoadingMenu. Tareas obsoletas se cancelan.
+Registro por etapas de la inicialización para investigar bloqueos reales.
+La composición cliente debe partir de DEV 2026.10.09-002122, no de 233854.
 
 Build con -DHDN_BUILD_ISOLATED=ON: HdnTailorStudio.dll + copia propia GPL
 MeshRenderingFramework.dll. API2 exclusiva; EnableIsolatedMeshBackend=1

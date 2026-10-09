@@ -290,14 +290,21 @@ HRESULT STDMETHODCALLTYPE present(IDXGISwapChain* swap, UINT interval,
 }
 bool installHook()
 {
+  logger().info("Lazy startup stage=swapchain");
   auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
   auto* swap = renderer
     ? reinterpret_cast<IDXGISwapChain*>(
         renderer->GetRuntimeData().renderWindows[0].swapChain)
     : nullptr;
-  if (!swap || !framework.bind() || !initializeQuad(swap) ||
-      !framework.init(device.Get()))
+  if (!swap || !framework.bind())
     return false;
+  logger().info("Lazy startup stage=quad");
+  if (!initializeQuad(swap))
+    return false;
+  logger().info("Lazy startup stage=framework");
+  if (!framework.init(device.Get()))
+    return false;
+  logger().info("Lazy startup stage=present_chain");
   auto*** object = reinterpret_cast<void***>(swap);
   auto** table = *object;
   HMODULE owner = nullptr;
@@ -326,21 +333,51 @@ bool installHook()
 std::int32_t apiVersion(RE::StaticFunctionTag*)
 {
   std::scoped_lock lock(mutex);
-  return enabled && hooked ? 2 : 0;
+  // Capability discovery must not initialize graphics or alter Present.
+  return enabled ? 2 : 0;
 }
 std::int32_t beginSession(RE::StaticFunctionTag*)
 {
   std::scoped_lock lock(mutex);
-  if (!enabled || !hooked)
+  if (!enabled || !SKSE::GetTaskInterface())
     return 0;
   reset();
-  return policy.begin(now());
+  const auto token = policy.begin(now());
+  if (token && !hooked) {
+    // Papyrus can run on a worker. Engine/D3D setup is a main-thread task,
+    // only for a still-current request made from an already loaded game.
+    // Closing/reloading/superseding the session before execution cancels it.
+    SKSE::GetTaskInterface()->AddTask([token] {
+      std::scoped_lock taskLock(mutex);
+      if (!enabled || hooked || !policy.live(token, now()))
+        return;
+      auto* player = RE::PlayerCharacter::GetSingleton();
+      auto* ui = RE::UI::GetSingleton();
+      if (!player || !player->Get3D(false) || !ui ||
+          ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME)) {
+        policy.end(token);
+        return;
+      }
+      logger().info("Lazy startup begin token={}", token);
+      try {
+        hooked = installHook();
+      } catch (const std::exception& error) {
+        logger().error("Lazy startup exception: {}", error.what());
+      }
+      logger().info("Lazy startup end token={} hook={}", token, hooked);
+      if (!hooked) {
+        enabled = false;
+        policy.end(token);
+      }
+    });
+  }
+  return token;
 }
 bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
               std::int32_t revision, std::int32_t signedId)
 {
   std::scoped_lock lock(mutex);
-  if (!enabled || !hooked || !policy.select(token, revision, now()))
+  if (!enabled || !policy.select(token, revision, now()))
     return false;
   deleteModel();
   policy.captureWindow(token, revision, now());
@@ -353,6 +390,10 @@ bool snapshot(RE::StaticFunctionTag*, std::int32_t token,
     std::scoped_lock taskLock(mutex);
     if (!policy.live(token, now()) || policy.revision() != revision)
       return;
+    if (!hooked) {
+      policy.commit(token, revision, now(), false);
+      return;
+    }
     auto* actor = RE::TESForm::LookupByID<RE::Actor>(id);
     auto* player = RE::PlayerCharacter::GetSingleton();
     auto* ui = RE::UI::GetSingleton();
@@ -428,9 +469,9 @@ void onMessage(SKSE::MessagingInterface::Message* message)
   if (message->type == SKSE::MessagingInterface::kDataLoaded) {
     std::scoped_lock lock(mutex);
     enabled = true;
-    hooked = installHook();
-    logger().info("Isolated mesh enabled={} hook={} API={}", enabled, hooked,
-                  enabled && hooked ? 2 : 0);
+    // No renderer lookup, framework initialization, GPU resource creation,
+    // Present hook or black clear during startup / entry to the game.
+    logger().info("Isolated mesh armed; lazy startup; hook={} API=2", hooked);
   } else if (message->type == SKSE::MessagingInterface::kPreLoadGame ||
              message->type == SKSE::MessagingInterface::kNewGame) {
     std::scoped_lock lock(mutex);
