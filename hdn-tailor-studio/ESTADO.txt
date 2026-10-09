@@ -1,9 +1,16 @@
 HDN — Probador independiente 0.2.4 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
 
+Texturas alternativas ARMA MO2S/MO3S: snapshot propio por sexo/componente/
+forma, con índice de geometría para nombres antiguos. Se respeta la semántica
+TXST (máscara distinta de glow), mapas vacíos, materiales y piel; no se toca
+geometría, pose ni cámara. 105 SKU/284 sustituciones de ambos sexos probadas;
+281 con nombres NIF reales, 3 fixtures solo ARMA por assets vanilla ausentes
+del servidor. Colores nuevos todavía pendientes de validación visual en juego.
+
 Captura propia del actor sin BSInvMarker: prendas y piel conservan el mismo
 marco canónico, sin inclinar todo el avatar por la rotación de inventario de
 Ropas finas. Scope local al hilo/RAII; API pública y objetos MRF sin cambios.
-Brazos de0.2.2 VALIDADOS por Mike; orientación nueva pendiente de juego.
+Brazos de0.2.2 y orientación/bolsas de0.2.3 VALIDADOS por Mike.
 
 Captura completa BSFlattenedBoneTree, incluidos huesos sin NiNode (dedos,
 antebrazos/twists y ropa). Frames globales relativos al root, independientes
@@ -16,7 +23,8 @@ Solo BeginSession agenda una tarea del hilo principal para una sesión viva
 con el jugador 3D cargado y fuera de LoadingMenu. Tareas obsoletas se cancelan.
 Registro por etapas de la inicialización para investigar bloqueos reales.
 La composición cliente debe partir del DEV publicado; base de esta revisión
-2026.10.09-085015. No recuperar clientes nocturnos ni configuración antigua.
+2026.10.09-091837, JS intacto; recuperación exacta de esa versión validada.
+No recuperar clientes nocturnos ni configuración antigua.
 
 Build con -DHDN_BUILD_ISOLATED=ON: HdnTailorStudio.dll + copia propia GPL
 MeshRenderingFramework.dll. API2 exclusiva; EnableIsolatedMeshBackend=1
