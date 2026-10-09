@@ -1,5 +1,5 @@
-#include <Windows.h>
 #include <ShlObj.h>
+#include <Windows.h>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -11,8 +11,32 @@
 // The real official DLL, real installed Address Library and exact SKSE ABI.
 // Hook-site opcodes are synthetic: this is NOT a Skyrim/Scaleform render test.
 #pragma section(".hdnimg", read, write)
-__declspec(allocate(".hdnimg")) unsigned char imagePadding[64 * 1024 * 1024] = { 1 };
+__declspec(allocate(
+  ".hdnimg")) unsigned char imagePadding[64 * 1024 * 1024] = { 1 };
 namespace {
+LONG WINAPI exceptionTrace(EXCEPTION_POINTERS* value)
+{
+  std::cerr << "First-chance exception 0x" << std::hex
+            << value->ExceptionRecord->ExceptionCode << '\n';
+  void* frames[24]{};
+  const auto count = CaptureStackBackTrace(0, 24, frames, nullptr);
+  for (unsigned i = 0; i < count; ++i) {
+    HMODULE module = nullptr;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<const char*>(frames[i]),
+                           &module)) {
+      char name[MAX_PATH]{};
+      GetModuleFileNameA(module, name, MAX_PATH);
+      std::cerr << std::filesystem::path(name).filename().string() << "+0x"
+                << (reinterpret_cast<std::uintptr_t>(frames[i]) -
+                    reinterpret_cast<std::uintptr_t>(module))
+                << '\n';
+    }
+  }
+  std::cerr << std::dec;
+  return EXCEPTION_CONTINUE_SEARCH;
+}
 int checks = 0;
 int registrations = 0;
 int dispatches = 0;
@@ -43,13 +67,17 @@ bool registerListener(std::uint32_t, const char* sender, void* callback)
   listener = reinterpret_cast<Callback>(callback);
   return true;
 }
-bool dispatch(std::uint32_t, std::uint32_t, void* data, std::uint32_t size, const char*)
+bool dispatch(std::uint32_t, std::uint32_t, void* data, std::uint32_t size,
+              const char*)
 {
   ++dispatches;
   check(data && size >= 16);
   return true;
 }
-void* eventDispatcher(std::uint32_t) { return nullptr; }
+void* eventDispatcher(std::uint32_t)
+{
+  return nullptr;
+}
 struct Messaging
 {
   std::uint32_t version = 2;
@@ -80,9 +108,18 @@ void* query(std::uint32_t id)
     return &trampoline;
   return nullptr;
 }
-std::uint32_t pluginHandle() { return 1; }
-std::uint32_t releaseIndex() { return 22; }
-const void* pluginInfo(const char*) { return nullptr; }
+std::uint32_t pluginHandle()
+{
+  return 1;
+}
+std::uint32_t releaseIndex()
+{
+  return 22;
+}
+const void* pluginInfo(const char*)
+{
+  return nullptr;
+}
 constexpr std::uint32_t pack(unsigned major, unsigned minor, unsigned patch)
 {
   return (major << 24) | (minor << 16) | (patch << 4);
@@ -100,8 +137,10 @@ struct LoadInterface
 };
 unsigned char* image(std::size_t rva)
 {
-  auto address = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)) + rva;
-  check(address >= imagePadding && address + 1024 < imagePadding + sizeof(imagePadding));
+  auto address =
+    reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)) + rva;
+  check(address >= imagePadding &&
+        address + 1024 < imagePadding + sizeof(imagePadding));
   return address;
 }
 void callSite(unsigned char* address)
@@ -116,13 +155,17 @@ int main(int argc, char** argv)
   check(argc == 3);
   const std::string mode(argv[2]);
   const auto dllPath = std::filesystem::absolute(argv[1]);
+  AddVectoredExceptionHandler(1, exceptionTrace);
   const auto loaded = LoadLibraryW(dllPath.c_str());
   if (!loaded)
-    std::cerr << "LoadLibrary failed with Windows error " << GetLastError() << '\n';
+    std::cerr << "LoadLibrary failed with Windows error " << GetLastError()
+              << '\n';
   check(loaded != nullptr);
-  auto metadata = reinterpret_cast<const std::uint32_t*>(GetProcAddress(loaded, "SKSEPlugin_Version"));
+  auto metadata = reinterpret_cast<const std::uint32_t*>(
+    GetProcAddress(loaded, "SKSEPlugin_Version"));
   using Load = bool (*)(const LoadInterface*);
-  auto load = reinterpret_cast<Load>(GetProcAddress(loaded, "SKSEPlugin_Load"));
+  auto load =
+    reinterpret_cast<Load>(GetProcAddress(loaded, "SKSEPlugin_Load"));
   if (mode == "neutral") {
     check(!metadata && !load && !GetProcAddress(loaded, "SKSEPlugin_Query"));
     check(FreeLibrary(loaded) != 0);
@@ -131,7 +174,8 @@ int main(int argc, char** argv)
   }
   check(metadata && load);
   check(metadata[0] == 1 && metadata[1] == pack(2, 2, 1));
-  check(std::string(reinterpret_cast<const char*>(metadata + 2)) == "MapMarkerFramework");
+  check(std::string(reinterpret_cast<const char*>(metadata + 2)) ==
+        "MapMarkerFramework");
   check(metadata[0x308 / 4] == 5); // Address Library + AE independence flags.
   check(metadata[0x304 / 4] == 0);
   for (unsigned i = 0; i < 16; ++i)
@@ -147,9 +191,10 @@ int main(int argc, char** argv)
   }
   // Upstream only guards movie/local hooks; discovery patch always installs.
   wchar_t* documents = nullptr;
-  check(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents) == S_OK);
+  check(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents) ==
+        S_OK);
   std::filesystem::create_directories(std::filesystem::path(documents) /
-    "My Games/Skyrim Special Edition/SKSE");
+                                      "My Games/Skyrim Special Edition/SKSE");
   CoTaskMemFree(documents);
   std::filesystem::create_directories("Data/SKSE/Plugins");
   {
@@ -174,6 +219,10 @@ int main(int argc, char** argv)
   listener(&dataLoaded);
   check(dispatches == 1);
   check(FreeLibrary(loaded) != 0);
-  std::cout << checks << " official DLL + SKSE2.2.6 / runtime1170 / real Address Library checks PASS (" << mode << ")\n";
-  std::cout << "Synthetic hooks/empty engine, NOT a Skyrim rendering acceptance test\n";
+  std::cout << checks
+            << " official DLL + SKSE2.2.6 / runtime1170 / real Address "
+               "Library checks PASS ("
+            << mode << ")\n";
+  std::cout << "Synthetic hooks/empty engine, NOT a Skyrim rendering "
+               "acceptance test\n";
 }
