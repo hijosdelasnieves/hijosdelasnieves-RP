@@ -1,10 +1,17 @@
 cmake_minimum_required(VERSION 3.22)
-project(HdnTailorStudio VERSION 0.2.3 LANGUAGES CXX)
+project(HdnTailorStudio VERSION 0.2.4 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(HDN_BUILD_PLUGIN "Build the experimental Windows SKSE plugin" ${WIN32})
 option(HDN_BUILD_ISOLATED "Build the independent NIF mesh backend" OFF)
 enable_testing()
+add_executable(studio-armor-textures-tests tests/ArmorTexturesTests.cpp)
+target_include_directories(studio-armor-textures-tests PRIVATE include)
+target_compile_options(studio-armor-textures-tests PRIVATE
+  $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>
+  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UNDEBUG>)
+add_test(NAME studio-armor-textures COMMAND studio-armor-textures-tests
+  "${CMAKE_CURRENT_SOURCE_DIR}/tests/CatalogTextureFixtures.tsv")
 add_executable(studio-pose-capture-tests tests/PoseCaptureTests.cpp)
 target_include_directories(studio-pose-capture-tests PRIVATE include)
 target_compile_options(studio-pose-capture-tests PRIVATE

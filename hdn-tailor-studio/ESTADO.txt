@@ -1,4 +1,4 @@
-HDN — Probador independiente 0.2.3 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
+HDN — Probador independiente 0.2.4 — EXPERIMENTAL, SIN ACEPTACIÓN SKYRIM
 
 Captura propia del actor sin BSInvMarker: prendas y piel conservan el mismo
 marco canónico, sin inclinar todo el avatar por la rotación de inventario de

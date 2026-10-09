@@ -10,7 +10,28 @@ endfunction()
 function(hdn_patch_framework filename)
   file(READ "${meshframework_SOURCE_DIR}/src/${filename}" text)
   if(filename STREQUAL "Mesh.cpp")
-    hdn_replace("#include \"Mesh.h\"" "#include \"Mesh.h\"\n#include \"ActorAssembly.hpp\"")
+    hdn_replace("#include \"Mesh.h\"" "#include \"Mesh.h\"\n#include \"ActorAssembly.hpp\"\n#include \"ArmorTextures.hpp\"")
+    hdn_replace([=[    for (nifly::NiShape* shape : file.GetShapes()) {]=]
+      [=[    const auto sourceShapes = file.GetShapes();
+    std::vector<std::string> sourceShapeNames;
+    sourceShapeNames.reserve(sourceShapes.size());
+    for (const auto shape : sourceShapes) {
+        sourceShapeNames.push_back(shape ? hdn::studio::textureKey(shape->name.get()) : "");
+    }
+    std::size_t nextShapeIndex = 0;
+    for (nifly::NiShape* shape : sourceShapes) {
+        const auto sourceShapeIndex = nextShapeIndex++;]=])
+    hdn_replace([=[        if (part.modelSpaceNormals) {
+            // Bethesda shader slot 7]=]
+      [=[        // Capture-time, CPU-only replacement before any GPU resource is
+        // created. No engine calls, recolouring or geometry changes in Present.
+        if (const auto alternate = hdn::studio::findArmorTexture(
+                sourcePath, part.shapeName, sourceShapeIndex, sourceShapeNames)) {
+            hdn::studio::applyArmorTexture(part.texturePaths, *alternate);
+        }
+
+        if (part.modelSpaceNormals) {
+            // Bethesda shader slot 7]=])
     hdn_replace([=[    RE::NiMatrix3 GetInventoryRotation(nifly::NifFile& file)
     {
         RE::NiMatrix3 rotation;]=] [=[    RE::NiMatrix3 GetInventoryRotation(nifly::NifFile& file)

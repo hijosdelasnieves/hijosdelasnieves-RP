@@ -47,7 +47,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     std::make_shared<spdlog::logger>("HdnTailorStudio", std::move(sink));
   hdn::studio::logger().set_level(spdlog::level::info);
   hdn::studio::logger().flush_on(spdlog::level::info);
-  hdn::studio::logger().info("Experimental isolated studio 0.2.3; runtime={}; "
+  hdn::studio::logger().info("Experimental isolated studio 0.2.4; runtime={}; "
                              "API=2; lazy startup; no NiClone, "
                              "no inventory renderer, SkyrimPlatform unchanged",
                              runtime.string());

@@ -2,6 +2,7 @@
 // No hooks, global UI, background thread, or automatic animation worker.
 #include "API.h"
 #include "ActorAssembly.hpp"
+#include "ArmorTextures.hpp"
 #include "FrameworkView.hpp"
 #include "PoseCapture.hpp"
 #include "Runtime.hpp"
@@ -9,6 +10,54 @@
 namespace {
 bool loaded = false;
 using IMesh = MeshRenderingFrameworkAPI::Internal::IMesh;
+std::vector<hdn::studio::ArmorTextureOverride> captureArmorTextures(
+  RE::Actor* actor)
+{
+  std::vector<hdn::studio::ArmorTextureOverride> values;
+  const auto npc = actor->GetActorBase();
+  const auto race = actor->GetRace();
+  if (!npc || !race)
+    return values;
+  const auto sex = npc->GetSex();
+  if (sex != RE::SEX::kMale && sex != RE::SEX::kFemale)
+    return values;
+  std::vector<RE::TESObjectARMO*> armors;
+  for (std::uint32_t slot = 0; slot < 32; ++slot) {
+    const auto armor =
+      actor->GetWornArmor(static_cast<RE::BGSBipedObjectForm::BipedObjectSlot>(
+        std::uint32_t{ 1 } << slot));
+    if (!armor ||
+        std::find(armors.begin(), armors.end(), armor) != armors.end())
+      continue;
+    armors.push_back(armor);
+    for (const auto addon : armor->armorAddons) {
+      if (!addon || !addon->IsValidRace(race))
+        continue;
+      const auto& model = addon->bipedModels[sex];
+      const auto path = model.GetModel();
+      if (!path || !path[0] || !model.alternateTextures ||
+          model.numAlternateTextures > 256)
+        continue;
+      for (std::uint32_t i = 0; i < model.numAlternateTextures; ++i) {
+        const auto& alternate = model.alternateTextures[i];
+        const auto name = alternate.name3D.c_str();
+        if (!alternate.textureSet || !name || !name[0])
+          continue;
+        auto& value = values.emplace_back();
+        value.model = hdn::studio::textureKey(path, true);
+        value.shape = hdn::studio::textureKey(name);
+        value.index = alternate.index3D;
+        for (std::uint32_t j = 0; j < value.textures.size(); ++j) {
+          const auto texture = alternate.textureSet->GetTexturePath(
+            static_cast<RE::BSTextureSet::Texture>(j));
+          if (texture)
+            value.textures[j] = texture;
+        }
+      }
+    }
+  }
+  return values;
+}
 hdn::studio::PoseTransform valueTransform(const RE::NiTransform& transform)
 {
   hdn::studio::PoseTransform result;
@@ -98,6 +147,8 @@ FUNCTION_PREFIX IMesh* HdnMesh_CaptureActor(RE::Actor* actor)
       pose.names.empty())
     return nullptr;
   const hdn::studio::ActorAssemblyScope assemblyScope;
+  const auto textureSnapshot = captureArmorTextures(actor);
+  const hdn::studio::ArmorTextureScope textureScope(textureSnapshot);
   const auto mesh =
     MeshRenderingFrameworkAPI::Internal::CreateFromActor(actor, 1024, 1536);
   if (!mesh)
