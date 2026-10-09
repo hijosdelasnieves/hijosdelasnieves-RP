@@ -55,6 +55,10 @@ void* fixedStringConstructor(void* storage, const char* text)
   *static_cast<const char**>(storage) = nullptr;
   return storage;
 }
+void fixedStringRelease(const char*& storage)
+{
+  check(storage == nullptr);
+}
 void check(bool value, const std::source_location& location)
 {
   ++checks;
@@ -183,6 +187,17 @@ int main(int argc, char** argv)
     ctor[10] = 0xFF;
     ctor[11] = 0xE0;
     check(FlushInstructionCache(GetCurrentProcess(), ctor, 12) != 0);
+    auto release =
+      image(0xced9a0); // Address Library69192: string pool Release8.
+    check(VirtualProtect(release, 16, PAGE_EXECUTE_READWRITE, &previous) != 0);
+    release[0] = 0x48;
+    release[1] = 0xB8;
+    const auto releaseTarget =
+      reinterpret_cast<std::uintptr_t>(fixedStringRelease);
+    std::memcpy(release + 2, &releaseTarget, sizeof(releaseTarget));
+    release[10] = 0xFF;
+    release[11] = 0xE0;
+    check(FlushInstructionCache(GetCurrentProcess(), release, 12) != 0);
   }
   const auto loaded = LoadLibraryW(dllPath.c_str());
   if (!loaded)
