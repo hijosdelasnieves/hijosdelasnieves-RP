@@ -1,0 +1,14 @@
+cmake_minimum_required(VERSION 3.24)
+project(HdnTailorMapChecks LANGUAGES CXX RC)
+enable_testing()
+add_executable(MapLoader tests/MapLoader.cpp tests/version.rc)
+set_target_properties(MapLoader PROPERTIES OUTPUT_NAME SkyrimSE)
+target_compile_features(MapLoader PRIVATE cxx_std_20)
+target_link_libraries(MapLoader PRIVATE shell32 ole32)
+add_library(MapMarkerFrameworkNeutral SHARED tests/Neutral.cpp)
+foreach(mode normal alt-hud rejected-hooks)
+  add_test(NAME map-loader-${mode}
+    COMMAND MapLoader "${CMAKE_BINARY_DIR}/upstream/MapMarkerFramework.dll" ${mode})
+endforeach()
+add_test(NAME map-recovery-loader
+  COMMAND MapLoader "$<TARGET_FILE:MapMarkerFrameworkNeutral>" neutral)

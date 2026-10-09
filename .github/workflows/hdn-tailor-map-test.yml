@@ -1,0 +1,47 @@
+name: HDN - Icono tienda (solo pruebas y recuperacion)
+on:
+  push:
+    branches: [codex/probador-privado-dev-20261008]
+    paths: [hdn-tailor-map/**, .github/workflows/hdn-tailor-map-test.yml]
+permissions:
+  contents: read
+jobs:
+  windows-loader:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pinned official plugin
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/Exit-9B/MapMarkerFramework/releases/download/v2.2.1/MapMarkerFramework-2.2.1.7z -OutFile upstream.7z
+          if ((Get-FileHash upstream.7z -Algorithm SHA256).Hash.ToLower() -ne '6c06000e37553454a75807e7baa0cdc6e367b5dc13b498f05caf6e526eed4bc3') { throw 'Upstream archive mismatch' }
+          7z x upstream.7z -oupstream
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-FileHash upstream/SKSE/Plugins/MapMarkerFramework.dll -Algorithm SHA256).Hash.ToLower() -ne '7fbbb8178978ca48cd26c19e54ddc315f4319eee4c748347f5cbb452a1b6454b') { throw 'Official DLL mismatch' }
+      - name: Build and test real Windows loader
+        shell: pwsh
+        run: |
+          cmake -S hdn-tailor-map -B map-build -G 'Visual Studio 17 2022' -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build map-build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force map-build/upstream, map-build/Data/SKSE/Plugins | Out-Null
+          Copy-Item upstream/SKSE/Plugins/MapMarkerFramework.dll map-build/upstream/
+          Copy-Item hdn-tailor-map/tests/versionlib-1-6-1170-0.bin map-build/Data/SKSE/Plugins/
+          if ((Get-FileHash map-build/Data/SKSE/Plugins/versionlib-1-6-1170-0.bin -Algorithm SHA256).Hash.ToLower() -ne 'c4093c569a3c83b26587f4b9ea4c55de9ae6e73b84a2af9fb3fbd30e2fe0d452') { throw 'Address Library mismatch' }
+          Set-Location map-build
+          ctest -C Release --verbose --timeout 30
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage recovery and test evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force map-artifact | Out-Null
+          Copy-Item map-build/Release/MapMarkerFrameworkNeutral.dll map-artifact/
+          Copy-Item map-build/Testing/Temporary/LastTest.log map-artifact/
+          git rev-parse HEAD | Set-Content map-artifact/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HdnTailorMap-TESTED-${{ github.sha }}
+          path: map-artifact/
+          retention-days: 14
