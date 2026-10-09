@@ -44,7 +44,8 @@ jobs:
         shell: pwsh
         run: |
           # Build-host tool only: not linked into or shipped with the plugin.
-          Invoke-WebRequest https://downloads.sourceforge.net/project/pkgconfiglite/0.28-1/pkg-config-lite-0.28-1_bin-win32.zip -OutFile pkg-config-lite.zip
+          curl.exe -fL --max-time 60 https://downloads.sourceforge.net/project/pkgconfiglite/0.28-1/pkg-config-lite-0.28-1_bin-win32.zip -o pkg-config-lite.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ((Get-FileHash pkg-config-lite.zip -Algorithm SHA256).Hash.ToLower() -ne '2038c49d23b5ca19e2218ca89f06df18fe6d870b4c6b54c0498548ef88771f6f') { throw 'Build tool checksum mismatch' }
           Expand-Archive pkg-config-lite.zip pkg-config-tool
           $env:PKG_CONFIG = Join-Path '${{ github.workspace }}' 'pkg-config-tool/pkg-config-lite-0.28-1/bin/pkg-config.exe'
