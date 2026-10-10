@@ -1,0 +1,5 @@
+{
+  "name": "hdn-gameplay-fixes",
+  "version-string": "0.1.0",
+  "dependencies": ["fmt", "spdlog", "rapidcsv"]
+}

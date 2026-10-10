@@ -1,0 +1,93 @@
+name: HDN - Gameplay LOD and chat input
+on:
+  push:
+    branches: [codex/jugabilidad-lod-input-dev-20261010]
+    paths: [hdn-gameplay-fixes/**, .github/workflows/hdn-gameplay-fixes.yml]
+permissions:
+  contents: read
+concurrency:
+  group: hdn-gameplay-fixes-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows-plugin:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: cb2981c4e03d421fa03b9bb5044cd1986180e7e4
+          path: gameplay-vcpkg
+      - uses: actions/cache@v4
+        with:
+          path: gameplay-build/vcpkg_installed
+          key: gameplay-static-md-cb2981-${{ hashFiles('hdn-gameplay-fixes/vcpkg.json') }}
+      - name: Configure
+        shell: pwsh
+        run: |
+          ./gameplay-vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake -S hdn-gameplay-fixes -B gameplay-build -G "Visual Studio 17 2022" -A x64 -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/gameplay-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile and verify real DLL
+        shell: pwsh
+        run: |
+          cmake --build gameplay-build --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir gameplay-build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile Papyrus native contract
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/Orvid/Caprica/releases/download/v0.3.0/Caprica.v0.3.0.7z -OutFile Caprica.7z
+          if ((Get-FileHash Caprica.7z -Algorithm SHA256).Hash.ToLower() -ne '0037e54cf3a1021e976278d9a637e8ae541aaf9ebeb8d274b6c2cfe32f4ee559') { throw 'Compiler checksum mismatch' }
+          7z x Caprica.7z -oCaprica
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $compiler = Get-ChildItem Caprica -Filter Caprica.exe -Recurse | Select-Object -First 1
+          $output = (New-Item -ItemType Directory -Force gameplay-build/package/Data/Scripts).FullName
+          $flags = (Resolve-Path cmake/TESV_Papyrus_Flags.flg).Path
+          Set-Location hdn-gameplay-fixes/scripts/Source
+          & $compiler.FullName --game skyrim --flags $flags --output $output HdnGameplayFixes.psc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage binary and corresponding source
+        shell: pwsh
+        run: |
+          $package = 'gameplay-build/package'
+          $dll = "$package/Data/SKSE/Plugins/HdnGameplayFixes.dll"
+          if (-not (Test-Path $dll)) { throw 'DLL missing' }
+          if (-not (Test-Path "$package/Data/Scripts/HdnGameplayFixes.pex")) { throw 'PEX missing' }
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $dumpbin = & $vswhere -latest -products '*' -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/dumpbin.exe' | Select-Object -First 1
+          $imports = & $dumpbin /dependents $dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($imports -match '(?i)\b(fmt|spdlog)\.dll\b') { throw 'Unexpected shared dependency' }
+          $imports | Set-Content "$package/imports.txt"
+          Copy-Item hdn-gameplay-fixes/config/HdnGameplayFixes.ini "$package/Data/SKSE/Plugins/"
+          Copy-Item hdn-gameplay-fixes/scripts/Source "$package/Data/Scripts/" -Recurse
+          Copy-Item hdn-gameplay-fixes/THIRD-PARTY.txt "$package/"
+          Copy-Item hdn-gameplay-fixes/LICENSE "$package/"
+          $sources = New-Item -ItemType Directory -Force gameplay-build/corresponding-source
+          Copy-Item hdn-gameplay-fixes "$sources/hdn-gameplay-fixes" -Recurse
+          Copy-Item .github/workflows/hdn-gameplay-fixes.yml "$sources/build-workflow.yml"
+          Copy-Item cmake/TESV_Papyrus_Flags.flg "$sources/"
+          git -C gameplay-build/_deps/commonlib-src archive --format=tar -o "$($sources.FullName)/commonlib-source.tar" HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C gameplay-build/_deps/commonlib-src/extern/openvr archive --format=tar -o "$($sources.FullName)/commonlib-openvr.tar" HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C gameplay-vcpkg archive --format=tar -o "$($sources.FullName)/vcpkg-source.tar" HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($dependency in (Get-Content hdn-gameplay-fixes/source-archives.json | ConvertFrom-Json)) {
+            $archive = Join-Path $sources.FullName "$($dependency.name)-source.tar.gz"
+            Invoke-WebRequest "https://github.com/$($dependency.repository)/archive/$($dependency.ref).tar.gz" -OutFile $archive
+            if ((Get-FileHash $archive -Algorithm SHA512).Hash.ToLower() -ne $dependency.sha512) { throw 'Dependency source checksum mismatch' }
+          }
+          Compress-Archive -Path "$sources/*" -DestinationPath "$package/corresponding-source.zip"
+          git rev-parse HEAD | Set-Content "$package/commit.txt"
+          Get-ChildItem "$package/Data" -Recurse -File | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize | Out-String -Width 240 | Set-Content "$package/checksums.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HdnGameplayFixes-${{ github.sha }}
+          path: gameplay-build/package/
+          retention-days: 14

@@ -1,0 +1,10 @@
+HdnGameplayFixes: modified HDN implementation, GPL-3.0-or-later.
+LOD engine detach contract and AE Address Library IDs adapted from Bottle's
+SkyrimLODFixes, GPL-3.0-or-later, upstream dev commit:
+e76efd13451131f5b5231e61912081ac63cfe82a
+https://github.com/InTheBottle/SkyrimLODFixes
+This implementation explicitly handles SkyMP native teleport notifications,
+including moves without LoadingMenu. It installs no binary patch/trampoline,
+does not include tree InstanceGroupFix, and keeps no deferred engine pointers.
+CommonLibSSE-NG (MIT), commit 94faaed0c60eddd8347767f2d4d29a97c93bde8c.
+See corresponding-source.zip for exact sources, build workflow and licenses.
