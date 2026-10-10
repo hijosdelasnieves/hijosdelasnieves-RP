@@ -1,5 +1,11 @@
 [
   {
+    "name": "directxtk",
+    "repository": "Microsoft/DirectXTK",
+    "ref": "mar2026",
+    "sha512": "cb302ae961cda328bf2b7f070e044b6bfba60ca8b1498763a1bc71ee38265654122e5f3a6a41ec4a5af8972fb1d5012aeaf42e3e3ef44151e2ed218a270892fb"
+  },
+  {
     "name": "fmt",
     "repository": "fmtlib/fmt",
     "ref": "12.1.0",
