@@ -22,15 +22,17 @@ int main()
   InputGate g;
   g.open();
   assert(g.mode == InputMode::Chat);
-  assert(!g.neutral(true));  // typing a space is never a resume
+  assert(!g.neutral(true)); // typing a space is never a resume
   g.close();
   assert(g.mode == InputMode::AwaitNeutral);
-  assert(!g.neutral(false));  // W held across ESC
+  assert(!g.neutral(false)); // W held across ESC
   g.close();                 // duplicate blur/send is harmless
-  assert(!g.neutral(false));  // no timeout rearms a held key
+  assert(!g.neutral(false)); // no timeout rearms a held key
   assert(g.neutral(true));   // release all, then require fresh input
   assert(g.mode == InputMode::Idle);
   assert(!g.neutral(true));
-  g.open(); g.close(); g.open();
-  assert(!g.neutral(true));  // stale close cannot release reopened chat
+  g.open();
+  g.close();
+  g.open();
+  assert(!g.neutral(true)); // stale close cannot release reopened chat
 }

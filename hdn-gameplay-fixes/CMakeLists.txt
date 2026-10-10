@@ -23,6 +23,11 @@ if(HDN_BUILD_PLUGIN)
     GIT_REPOSITORY https://github.com/alandtse/CommonLibSSE-NG.git
     GIT_TAG 94faaed0c60eddd8347767f2d4d29a97c93bde8c)
   FetchContent_MakeAvailable(commonlib)
+  get_target_property(HDN_COMMONLIB_IMPORTED CommonLibSSE IMPORTED)
+  if(NOT HDN_COMMONLIB_IMPORTED)
+    # MSBuild --parallel schedules projects; /MP parallelizes this one library.
+    target_compile_options(CommonLibSSE PRIVATE /MP4)
+  endif()
   include(${commonlib_SOURCE_DIR}/cmake/CommonLibSSE.cmake)
   set(HDN_RUNTIMES 1.6.1170)
   foreach(index RANGE 1 15)

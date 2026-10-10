@@ -24,9 +24,15 @@ inline bool atDestination(std::uint32_t actualWorld, float x, float y,
   return actualWorld && actualWorld == requestedWorld &&
     std::abs(x - targetX) <= 512 && std::abs(y - targetY) <= 512;
 }
-enum class InputMode : unsigned { Idle, Chat, AwaitNeutral };
+enum class InputMode : unsigned
+{
+  Idle,
+  Chat,
+  AwaitNeutral
+};
 // Closing never resumes held input. A complete neutral sample is required.
-class InputGate {
+class InputGate
+{
 public:
   InputMode mode{ InputMode::Idle };
   void open() { mode = InputMode::Chat; }
@@ -43,4 +49,4 @@ public:
     return true;
   }
 };
-}  // namespace hdn::gameplay
+} // namespace hdn::gameplay

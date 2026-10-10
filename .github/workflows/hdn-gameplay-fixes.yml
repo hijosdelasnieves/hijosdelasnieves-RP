@@ -24,6 +24,11 @@ jobs:
         with:
           path: gameplay-build/vcpkg_installed
           key: gameplay-static-md-cb2981-${{ hashFiles('hdn-gameplay-fixes/vcpkg.json') }}
+      - uses: actions/cache/restore@v4
+        id: commonlib
+        with:
+          path: gameplay-build/_deps
+          key: gameplay-commonlib-94faaed-mp4-static-md-${{ hashFiles('hdn-gameplay-fixes/vcpkg.json') }}
       - name: Configure
         shell: pwsh
         run: |
@@ -91,3 +96,8 @@ jobs:
           name: HdnGameplayFixes-${{ github.sha }}
           path: gameplay-build/package/
           retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always() && steps.commonlib.outputs.cache-hit != 'true'
+        with:
+          path: gameplay-build/_deps
+          key: gameplay-commonlib-94faaed-mp4-static-md-${{ hashFiles('hdn-gameplay-fixes/vcpkg.json') }}

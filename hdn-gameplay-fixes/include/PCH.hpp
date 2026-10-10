@@ -9,3 +9,5 @@
 #include <filesystem>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/null_sink.h>
+
+using namespace std::string_view_literals;
