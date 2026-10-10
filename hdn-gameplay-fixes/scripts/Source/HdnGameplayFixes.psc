@@ -1,4 +1,4 @@
-Scriptname HdnGameplayFixes Hidden
+Scriptname HdnGameplayFixes Hidden Native
 Int Function ApiVersion() Global Native
 Int Function GetInputMode() Global Native
 Function SetChatActive(Bool active) Global Native
