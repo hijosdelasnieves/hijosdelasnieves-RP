@@ -21,7 +21,9 @@ inline void Register(Napi::Env env, Napi::Object& exports)
   exports.Set("findConsoleCommand",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(FindConsoleCommand)));
-  exports.Set("writeLogs", Napi::Function::New(env, WriteLogs));
+  // HDN 2026-10-14: WrapCppExceptions también aquí (InvalidArgumentException con un pluginName inválido; ver FileInfoApi.h).
+  exports.Set("writeLogs",
+              Napi::Function::New(env, NapiHelper::WrapCppExceptions(WriteLogs)));
   exports.Set(
     "setPrintConsolePrefixesEnabled",
     Napi::Function::New(

@@ -462,6 +462,17 @@ void SkyrimPlatform::PushToWorkerAndWait(
   RE::BSScript::Internal::VirtualMachine* vm,
   RE::BSScript::IFunction::CallResult* ret)
 {
+  // HDN 2026-10-14: only StartWorker() runs this io_context. Once the JS tick
+  // has called StopWorker(), OnUpdate goes on to gameThrQ->Update(), where the
+  // deferred Debug.sendAnimationEvent calls fire the JS sendAnimationEvent
+  // hooks. A hook that called a Papyrus native there waited below for a
+  // worker that never runs again and froze the game (gesture cut + W, 14/10).
+  // Fail the call instead, as natives already do outside the Papyrus update.
+  if (pImpl->ioContext.stopped()) {
+    throw std::runtime_error(
+      "Papyrus natives can't be called here: the update worker is not running "
+      "(animation hook fired by a deferred task)");
+  }
   std::unique_lock<std::mutex> lock(pImpl->syncLock);
   pImpl->complete = false;
   asio::post(

@@ -114,7 +114,9 @@ Napi::Value CreateHookApi(Napi::Env env, std::shared_ptr<Hook> hookInfo)
   auto hook = Napi::Object::New(env);
   hook.Set(
     "add",
-    Napi::Function::New(env, [hookInfo](const Napi::CallbackInfo& info) {
+    // HDN 2026-10-14: WrapCppExceptions en add y remove (los Extract* lanzan std::runtime_error; ver FileInfoApi.h).
+    Napi::Function::New(env, NapiHelper::WrapCppExceptions([hookInfo](
+                               const Napi::CallbackInfo& info) {
       auto handlerObj = NapiHelper::ExtractObject(info[0], "handlerObj");
 
       std::optional<double> minSelfId;
@@ -138,15 +140,16 @@ Napi::Value CreateHookApi(Napi::Env env, std::shared_ptr<Hook> hookInfo)
       uint32_t id = hookInfo->AddHandler(handler);
 
       return Napi::Number::New(info.Env(), id);
-    }));
+    })));
 
   hook.Set(
     "remove",
-    Napi::Function::New(env, [hookInfo](const Napi::CallbackInfo& info) {
+    Napi::Function::New(env, NapiHelper::WrapCppExceptions([hookInfo](
+                               const Napi::CallbackInfo& info) {
       uint32_t toRemove = NapiHelper::ExtractUInt32(info[0], "toRemove");
       hookInfo->RemoveHandler(toRemove);
       return info.Env().Undefined();
-    }));
+    })));
   return hook;
 }
 }

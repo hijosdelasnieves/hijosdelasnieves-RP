@@ -447,7 +447,12 @@ void TESModPlatform::ResizeHeadpartsArray(IVM* vm, StackID stackId,
     npc->headParts = nullptr;
     npc->numHeadParts = 0;
   } else {
-    npc->headParts = new RE::BGSHeadPart*[newSize];
+    // HDN 2026-10-14: con el gestor de memoria del juego, no con new de C++. El juego libera este array con el suyo
+    // (EngineFixes: tbbmalloc) al descargar el mundo; con /cambiarpj o un reinicio (vuelta al menú principal) eso
+    // reventaba en Block::freeOwnObject con el TESNPC del jugador en la pila. El array anterior se deja sin liberar,
+    // como antes: puede ser del fichero del juego o de una llamada anterior.
+    npc->headParts = RE::calloc<RE::BGSHeadPart*>(static_cast<std::size_t>(newSize),
+                                                  sizeof(RE::BGSHeadPart*));
     npc->numHeadParts = newSize;
 
     for (int8_t i = 0; i < npc->numHeadParts; ++i) {
@@ -472,7 +477,8 @@ void TESModPlatform::ResizeTintsArray(IVM* vm, StackID stackId,
 
   pc->GetTintList()->resize(newSize);
   for (auto& mask : *pc->GetTintList()) {
-    mask = (RE::TintMask*)new ::TintMask;
+    // HDN 2026-10-14: gestor de memoria del juego (ver ResizeHeadpartsArray).
+    mask = (RE::TintMask*)RE::calloc<::TintMask>(1, sizeof(::TintMask));
   }
 }
 

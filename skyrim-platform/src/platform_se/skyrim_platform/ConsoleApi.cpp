@@ -419,7 +419,11 @@ Napi::Value ConsoleApi::WriteLogs(const Napi::CallbackInfo& info)
       str = stringify.Call(json, { info[i] });
     }
 
-    s += str.As<Napi::String>().Utf8Value() + ' ';
+    // HDN 2026-10-13: ToString() en lugar de As<Napi::String>(). Con un número, un booleano o undefined,
+    // As<String>().Utf8Value() hacía lanzar a node-addon-api («A string was expected») y la línea se perdía;
+    // InGameConsolePrinter::Print ya convertía así. Una de esas excepciones, en el primer fotograma del personaje
+    // nuevo, era el punto donde el cliente se quedaba parado (hdn-diag/sp-nativo-carga/DIAGNOSTICO-Y-ARREGLO.md).
+    s += str.ToString().Utf8Value() + ' ';
   }
 
   (*g_m[pluginName]) << s << std::endl;
