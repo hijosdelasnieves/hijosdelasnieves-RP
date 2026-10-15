@@ -6,6 +6,7 @@
 #include "PixelProbe.hpp"
 #include "Studio.hpp"
 #include "SwapChainTable.hpp"
+#include "ViewportComposite.hpp"
 #include <array>
 #include <cwctype>
 #include <d3dcompiler.h>
@@ -92,28 +93,13 @@ bool initializeQuad(IDXGISwapChain* swap)
     return true;
   device = current;
   device->GetImmediateContext(&context);
-  constexpr auto shader = R"(
-Texture2D image : register(t0);
-SamplerState imageSampler : register(s0);
-struct V { float4 position:SV_POSITION; float2 uv:TEXCOORD0; };
-V vs(uint id:SV_VertexID) {
-  V o;
-  o.uv=float2((id<<1)&2,id&2);
-  o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);
-  return o;
-}
-float4 ps(V input):SV_TARGET {
-  float4 c=image.Sample(imageSampler,input.uv);
-  return float4(c.rgb,1);
-}
-)";
   ComPtr<ID3DBlob> vs, ps, errors;
-  if (FAILED(D3DCompile(shader, std::strlen(shader), nullptr, nullptr, nullptr,
-                        "vs", "vs_5_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, &vs,
-                        &errors)) ||
-      FAILED(D3DCompile(shader, std::strlen(shader), nullptr, nullptr, nullptr,
-                        "ps", "ps_5_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, &ps,
-                        &errors)))
+  if (FAILED(D3DCompile(viewportQuadShader, std::strlen(viewportQuadShader),
+                        nullptr, nullptr, nullptr, "vs", "vs_5_0",
+                        D3DCOMPILE_ENABLE_STRICTNESS, 0, &vs, &errors)) ||
+      FAILED(D3DCompile(viewportQuadShader, std::strlen(viewportQuadShader),
+                        nullptr, nullptr, nullptr, "ps", "ps_5_0",
+                        D3DCOMPILE_ENABLE_STRICTNESS, 0, &ps, &errors)))
     return false;
   if (FAILED(device->CreateVertexShader(vs->GetBufferPointer(),
                                         vs->GetBufferSize(), nullptr,
@@ -210,6 +196,12 @@ void draw(IDXGISwapChain* swap)
     deleteModel();
   if (!enabled || !policy.token())
     return;
+  static bool compositionLogged = false;
+  if (!compositionLogged) {
+    compositionLogged = true;
+    logger().info(
+      "[HDN][portrait-compositor] viewport-only; full clear disabled");
+  }
   if (!initializeQuad(swap)) {
     policy.captureFailed();
     return;
@@ -225,30 +217,31 @@ void draw(IDXGISwapChain* swap)
   D3DState restore(context.Get());
   auto* renderTarget = target.Get();
   context->OMSetRenderTargets(1, &renderTarget, nullptr);
-  const float black[4]{ 0, 0, 0, 1 };
-  // Entire world is covered, even while loading: no player/world duplicate.
-  // SkyrimPlatform's CEF draws AFTER this, so controls remain visible.
-  context->ClearRenderTargetView(target.Get(), black);
+  // A full-surface clear here erased CEF on presenters that draw UI earlier.
+  // The opaque quad below covers only the reserved character viewport.
   const auto view = policy.viewport();
   const float width = view.width * description.Width;
   const float height = view.height * description.Height;
   const float aspect = width / height;
   const auto status = policy.status(policy.token(), now());
-  if (!model || status == Status::invalidModel || status == Status::loading)
-    return;
-  if (dirty || aspect != renderedAspect) {
-    if (!framework.render(model, policy.yaw(), policy.zoom(), aspect)) {
+  ID3D11ShaderResourceView* resource = nullptr;
+  if (model && status != Status::invalidModel && status != Status::loading) {
+    if (dirty || aspect != renderedAspect) {
+      if (!framework.render(model, policy.yaw(), policy.zoom(), aspect)) {
+        policy.captureFailed();
+        logger().warn("Independent draw failed token={} revision={}",
+                      policy.token(), policy.revision());
+        return;
+      }
+      dirty = false;
+      renderedAspect = aspect;
+    }
+    resource = framework.texture(model);
+    if (!resource) {
       policy.captureFailed();
-      logger().warn("Independent draw failed token={} revision={}",
-                    policy.token(), policy.revision());
       return;
     }
-    dirty = false;
-    renderedAspect = aspect;
   }
-  auto* resource = framework.texture(model);
-  if (!resource)
-    return;
   const D3D11_VIEWPORT viewport{ (view.x - view.width / 2) * description.Width,
                                  (view.y - view.height / 2) *
                                    description.Height,
@@ -256,7 +249,6 @@ void draw(IDXGISwapChain* swap)
                                  height,
                                  0,
                                  1 };
-  context->RSSetViewports(1, &viewport);
   context->RSSetState(raster.Get());
   context->OMSetBlendState(blend.Get(), nullptr, 0xffffffff);
   context->OMSetDepthStencilState(depth.Get(), 0);
@@ -267,11 +259,13 @@ void draw(IDXGISwapChain* swap)
   context->GSSetShader(nullptr, nullptr, 0);
   context->HSSetShader(nullptr, nullptr, 0);
   context->DSSetShader(nullptr, nullptr, 0);
-  context->PSSetShaderResources(0, 1, &resource);
   auto* sample = sampler.Get();
   context->PSSetSamplers(0, 1, &sample);
-  context->Draw(3, 0);
-  if (probe(resource))
+  if (!compositeViewport(context.Get(), viewport, resource)) {
+    policy.captureFailed();
+    return;
+  }
+  if (resource && probe(resource))
     policy.rendered(true);
 }
 HRESULT STDMETHODCALLTYPE present(IDXGISwapChain* swap, UINT interval,
