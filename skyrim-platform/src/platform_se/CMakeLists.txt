@@ -190,6 +190,19 @@ if(NOT "${SKIP_SKYRIM_PLATFORM_BUILDING}")
     list(APPEND DEPENDENCIES_FOR_CUSTOM_TARGETS sp_codegen)
   endif()
 
+  # Exercise the actual compositor guard on a software D3D11 GPU before a
+  # Windows package can be produced. No Skyrim data or interactive desktop.
+  if(WIN32 AND NOT EMSCRIPTEN)
+    add_executable(hdn_cef_compositor_warp EXCLUDE_FROM_ALL
+      ${CMAKE_SOURCE_DIR}/tests/cef-compositor-warp.cpp)
+    set_target_properties(hdn_cef_compositor_warp PROPERTIES CXX_STANDARD 20)
+    target_link_libraries(hdn_cef_compositor_warp PRIVATE d3d11 d3dcompiler)
+    add_custom_target(hdn_cef_compositor_check
+      COMMAND $<TARGET_FILE:hdn_cef_compositor_warp>
+      DEPENDS hdn_cef_compositor_warp VERBATIM)
+    list(APPEND DEPENDENCIES_FOR_CUSTOM_TARGETS hdn_cef_compositor_check)
+  endif()
+
   # this target was originally called pack, now it is called skyrim-platform
   # so we can use add_dependencies(x skyrim-platform) in other projects
   add_custom_target(skyrim-platform ALL

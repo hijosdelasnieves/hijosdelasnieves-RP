@@ -1,5 +1,6 @@
 #include "DInputHook.hpp"
 #include "HdnLoggerNativeBarModel.h"
+#include "ScopedOverlayBackbuffer.h"
 #include "TextToDraw.h"
 #include <DX11RenderHandler.h>
 #include <DirectXColors.h>
@@ -51,6 +52,28 @@ void DX11RenderHandler::Render(
     if (!m_pImmediateContext || !m_pContext)
       return;
   }
+
+  // Select the final surface explicitly. The character portrait renderer
+  // clears/draws this backbuffer before CEF; inheriting a different target
+  // here would leave a working but invisible menu over a black portrait.
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> surface;
+  auto* swap = m_pRenderer->GetSwapChain();
+  if (!swap || FAILED(swap->GetBuffer(0, IID_PPV_ARGS(&surface))))
+    return;
+  ScopedOverlayBackbuffer overlayTarget(m_pImmediateContext.Get(),
+                                         surface.Get());
+  if (!overlayTarget)
+    return;
+  const D3D11_VIEWPORT browserViewport{
+    0, 0, static_cast<float>(overlayTarget.Width()),
+    static_cast<float>(overlayTarget.Height()), 0, 1
+  };
+  m_pSpriteBatch->SetViewport(browserViewport);
+  static std::once_flag compositorLogged;
+  std::call_once(compositorLogged, [&]() {
+    spdlog::info("[HDN][cef-compositor] explicit backbuffer {}x{}",
+                 overlayTarget.Width(), overlayTarget.Height());
+  });
 
   // First of all we flush our deferred context in case we have updated the
   // texture
@@ -264,17 +287,12 @@ void DX11RenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
 
 void DX11RenderHandler::GetRenderTargetSize()
 {
-  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pRenderTargetView;
-
-  m_pImmediateContext->OMGetRenderTargets(
-    1, pRenderTargetView.ReleaseAndGetAddressOf(), nullptr);
-  if (pRenderTargetView) {
-    Microsoft::WRL::ComPtr<ID3D11Resource> pSrcResource;
-    pRenderTargetView->GetResource(pSrcResource.ReleaseAndGetAddressOf());
-
-    if (pSrcResource) {
-      Microsoft::WRL::ComPtr<ID3D11Texture2D> pSrcBuffer;
-      pSrcResource.As(&pSrcBuffer);
+  // CEF and its cursor must use the window surface dimensions, including
+  // during initial creation, independently of Skyrim's current HDR target.
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> pSrcBuffer;
+  auto* swap = m_pRenderer->GetSwapChain();
+  if (swap && SUCCEEDED(swap->GetBuffer(0, IID_PPV_ARGS(&pSrcBuffer)))) {
+    if (pSrcBuffer) {
 
       D3D11_TEXTURE2D_DESC desc;
       pSrcBuffer->GetDesc(&desc);
