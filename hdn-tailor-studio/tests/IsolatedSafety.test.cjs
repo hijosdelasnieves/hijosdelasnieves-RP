@@ -33,7 +33,8 @@ check(beginTask.indexOf('policy.live(token, now())') < beginTask.indexOf('instal
 check(beginTask.indexOf('LoadingMenu::MENU_NAME') < beginTask.indexOf('installHook()'));
 check(beginTask.includes('policy.end(token)'));
 check(mainTask.indexOf('if (!hooked)') < mainTask.indexOf('LookupByID'));
-check(studio.indexOf('context->ClearRenderTargetView(target.Get(), black)') < studio.indexOf('if (!model ||'));
+check(!studio.includes('ClearRenderTargetView('));
+check(studio.includes('compositeViewport(context.Get(), viewport, resource)'));
 check(studio.includes('return nextPresent(swap, interval, flags);'));
 check(studio.includes('std::array<void*, 41> swapVtable'));
 check(studio.includes('swapChainTableEntries(swap)'));
