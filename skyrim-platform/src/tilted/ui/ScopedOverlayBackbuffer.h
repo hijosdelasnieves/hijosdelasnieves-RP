@@ -40,8 +40,9 @@ public:
                             previousViewports_.data());
     auto* target = target_.Get();
     context->OMSetRenderTargets(1, &target, nullptr);
-    const D3D11_VIEWPORT viewport{ 0, 0, static_cast<float>(width_),
-                                  static_cast<float>(height_), 0, 1 };
+    const D3D11_VIEWPORT viewport{
+      0, 0, static_cast<float>(width_), static_cast<float>(height_), 0, 1
+    };
     context->RSSetViewports(1, &viewport);
     bound_ = true;
   }
@@ -81,16 +82,15 @@ public:
 private:
   ID3D11DeviceContext* context_ = nullptr;
   Microsoft::WRL::ComPtr<ID3D11RenderTargetView> target_;
-  std::array<ID3D11RenderTargetView*,
-             D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> previousTargets_{};
+  std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT>
+    previousTargets_{};
   ID3D11DepthStencilView* previousDepth_ = nullptr;
   std::array<ID3D11UnorderedAccessView*, D3D11_PS_CS_UAV_REGISTER_COUNT>
     previousUavs_{};
   std::array<D3D11_VIEWPORT,
              D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE>
     previousViewports_{};
-  UINT previousViewportCount_ =
-    static_cast<UINT>(previousViewports_.size());
+  UINT previousViewportCount_ = static_cast<UINT>(previousViewports_.size());
   UINT width_ = 0, height_ = 0;
   bool bound_ = false;
 };

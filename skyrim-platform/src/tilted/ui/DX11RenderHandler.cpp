@@ -61,12 +61,16 @@ void DX11RenderHandler::Render(
   if (!swap || FAILED(swap->GetBuffer(0, IID_PPV_ARGS(&surface))))
     return;
   ScopedOverlayBackbuffer overlayTarget(m_pImmediateContext.Get(),
-                                         surface.Get());
+                                        surface.Get());
   if (!overlayTarget)
     return;
   const D3D11_VIEWPORT browserViewport{
-    0, 0, static_cast<float>(overlayTarget.Width()),
-    static_cast<float>(overlayTarget.Height()), 0, 1
+    0,
+    0,
+    static_cast<float>(overlayTarget.Width()),
+    static_cast<float>(overlayTarget.Height()),
+    0,
+    1
   };
   m_pSpriteBatch->SetViewport(browserViewport);
   static std::once_flag compositorLogged;
