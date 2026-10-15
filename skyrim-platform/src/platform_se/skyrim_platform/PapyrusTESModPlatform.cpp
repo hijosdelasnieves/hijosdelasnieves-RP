@@ -3,6 +3,7 @@
 #include "ConsoleApi.h"
 #include "ExceptionPrinter.h"
 #include "NullPointerException.h"
+#include "RemoteFaceRegen.h"
 
 #include <RE/B/BSPointerHandle.h>
 #include <RE/N/NiPoint3.h>
@@ -27,6 +28,15 @@ struct
 {
   // index is formID-0xff000000
   std::vector<std::shared_ptr<RE::BSTArray<RE::TintMask*>>> actorsTints;
+  struct FaceOwner
+  {
+    RE::ActorHandle handle;
+    uint32_t baseId;
+    std::shared_ptr<const Hdn::RemoteFaceTintSnapshot> snapshot;
+  };
+  std::unordered_map<uint32_t, FaceOwner> faceOwners;
+  Hdn::RemoteFaceRegenQueue faceQueue;
+  uint64_t faceEpoch = 0;
   std::recursive_mutex m;
 } share2;
 
@@ -47,6 +57,107 @@ RE::BSTArray<RE::TintMask*> Clone(const RE::BSTArray<RE::TintMask*>& original)
     memcpy(res.back(), tint, sizeof(::TintMask));
   }
   return res;
+}
+
+bool DynamicFaceId(uint32_t id)
+{
+  return id >= 0xff000000 && id != 0xffffffff;
+}
+
+bool FaceRuntimeSupported()
+{
+  return REL::Module::IsAE() &&
+         REL::Module::get().version() == REL::Version(1, 6, 1170, 0);
+}
+
+// Only dynamic appearance bases enter this path. Actors with vanilla bases
+// retain their existing handling (including horses).
+bool IsRemoteFaceActor(RE::Actor* actor)
+{
+  auto* base = actor ? actor->GetActorBase() : nullptr;
+  return actor && DynamicFaceId(actor->GetFormID()) && base &&
+         DynamicFaceId(base->GetFormID()) && !actor->IsDeleted() &&
+         !actor->IsMarkedForDeletion();
+}
+
+bool ValidFaceOwner(uint32_t actorId, const decltype(share2)::FaceOwner& owner)
+{
+  auto actor = owner.handle.get();
+  auto* base = actor ? actor->GetActorBase() : nullptr;
+  return actor && actor->GetFormID() == actorId &&
+         !actor->IsDeleted() && !actor->IsMarkedForDeletion() && base &&
+         DynamicFaceId(actorId) && DynamicFaceId(owner.baseId) &&
+         base->GetFormID() == owner.baseId;
+}
+
+void RetireFaceOwner(uint32_t actorId)
+{
+  share2.faceQueue.Cancel(actorId);
+  share2.faceOwners.erase(actorId);
+}
+
+std::shared_ptr<::TintMask> CreateOwnedFaceTint(int32_t type, uint32_t argb,
+                                              RE::BSFixedString texturePath)
+{
+  auto* memory = RE::malloc<::TintMask>();
+  if (!memory)
+    return nullptr;
+  auto* raw = ::new (memory) ::TintMask();
+  std::shared_ptr<::TintMask> tint(raw, [](::TintMask* mask) {
+    // TESTexture has the real engine vtable; BaseFormComponent's delete uses
+    // the game's allocator. No GPU texture is stored in this component.
+    delete mask->texture;
+    mask->~TintMask();
+    RE::free(mask);
+  });
+  auto* texture = RE::calloc<RE::TESTexture>(1, sizeof(RE::TESTexture));
+  if (!texture)
+    return nullptr;
+  using Constructor = RE::TESTexture* (*)(RE::TESTexture*);
+  static REL::Relocation<Constructor> construct{ REL::ID(14953) };
+  try {
+    construct(texture);
+  } catch (...) {
+    RE::free(texture);
+    throw;
+  }
+  raw->texture = texture;
+  texture->InitializeDataComponent();
+  texture->textureName = texturePath;
+  raw->color.alpha = COLOR_ALPHA(argb);
+  raw->color.red = COLOR_RED(argb);
+  raw->color.green = COLOR_GREEN(argb);
+  raw->color.blue = COLOR_BLUE(argb);
+  raw->alpha = COLOR_ALPHA(argb) / 255.f;
+  raw->tintType = type;
+  return tint;
+}
+
+void PushOwnedFaceTint(RE::Actor* actor, int32_t type, uint32_t argb,
+                        RE::BSFixedString texturePath)
+{
+  auto tint = CreateOwnedFaceTint(type, argb, texturePath);
+  if (!tint)
+    return;
+  const auto actorId = actor->GetFormID();
+  const auto baseId = actor->GetActorBase()->GetFormID();
+  auto snapshot = std::make_shared<Hdn::RemoteFaceTintSnapshot>();
+  std::lock_guard lock(share2.m);
+  auto previous = share2.faceOwners.find(actorId);
+  if (previous != share2.faceOwners.end() &&
+      ValidFaceOwner(actorId, previous->second) &&
+      previous->second.handle.get().get() == actor &&
+      previous->second.baseId == baseId && previous->second.snapshot) {
+    snapshot->masks = previous->second.snapshot->masks;
+    snapshot->storage = previous->second.snapshot->storage;
+  }
+  snapshot->storage.push_back(tint);
+  snapshot->masks.push_back(reinterpret_cast<RE::TintMask*>(tint.get()));
+  const auto legacyIndex = actorId - 0xff000000;
+  if (legacyIndex < share2.actorsTints.size())
+    share2.actorsTints[legacyIndex].reset();
+  share2.faceOwners[actorId] = { actor->GetHandle(), baseId, snapshot };
+  (void)share2.faceQueue.Request(actorId, baseId);
 }
 }
 
@@ -94,7 +205,33 @@ private:
     const RE::TESLoadGameEvent* event_,
     RE::BSTEventSource<RE::TESLoadGameEvent>* eventSource) override
   {
+    TESModPlatform::ClearRemoteFaceState();
     vmCallAllowed = true;
+    return RE::BSEventNotifyControl::kContinue;
+  }
+};
+
+class RemoteFaceDeleteEvent : public RE::BSTEventSink<RE::TESFormDeleteEvent>
+{
+public:
+  RemoteFaceDeleteEvent()
+  {
+    if (auto* holder = RE::ScriptEventSourceHolder::GetSingleton())
+      holder->AddEventSink(this);
+  }
+
+private:
+  RE::BSEventNotifyControl ProcessEvent(
+    const RE::TESFormDeleteEvent* event,
+    RE::BSTEventSource<RE::TESFormDeleteEvent>*) override
+  {
+    if (event && DynamicFaceId(event->formID)) {
+      std::lock_guard lock(share2.m);
+      // A reference deletion retires its snapshot even after its job has
+      // finished. Active scopes/automatic hooks retain their own aliases.
+      if (share2.faceOwners.find(event->formID) != share2.faceOwners.end())
+        RetireFaceOwner(event->formID);
+    }
     return RE::BSEventNotifyControl::kContinue;
   }
 };
@@ -508,6 +645,7 @@ void TESModPlatform::ClearTintMasks(IVM* vm, StackID stackId,
   std::lock_guard l(share2.m);
   if (share2.actorsTints.size() > i)
     share2.actorsTints[i].reset();
+  RetireFaceOwner(targetActor->GetFormID());
 }
 
 void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
@@ -516,6 +654,10 @@ void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
                                   RE::Actor* targetActor, int32_t type,
                                   uint32_t argb, RE::BSFixedString texturePath)
 {
+  if (FaceRuntimeSupported() && IsRemoteFaceActor(targetActor)) {
+    PushOwnedFaceTint(targetActor, type, argb, texturePath);
+    return;
+  }
   auto newTm = RE::malloc<::TintMask>();
   if (!newTm)
     return;
@@ -977,11 +1119,152 @@ std::shared_ptr<RE::BSTArray<RE::TintMask*>> TESModPlatform::GetTintsFor(
   }
 
   std::lock_guard l(share2.m);
+  auto owner = share2.faceOwners.find(actorId);
+  if (owner != share2.faceOwners.end()) {
+    if (!ValidFaceOwner(actorId, owner->second)) {
+      RetireFaceOwner(actorId);
+      return nullptr;
+    }
+    const auto& snapshot = owner->second.snapshot;
+    if (!snapshot)
+      return nullptr;
+    // Alias ownership keeps the immutable snapshot and its CPU components
+    // alive through an automatic engine hook, without cloning raw pointers.
+    return std::shared_ptr<RE::BSTArray<RE::TintMask*>>(
+      snapshot, const_cast<RE::BSTArray<RE::TintMask*>*>(&snapshot->masks));
+  }
   auto i = actorId - 0xff000000;
   if (i >= share2.actorsTints.size()) {
     return nullptr;
   }
   return share2.actorsTints[i];
+}
+
+void TESModPlatform::QueueRemoteFaceTintRefresh(RE::Actor* actor)
+{
+  if (!FaceRuntimeSupported() || !actor)
+    return;
+  const auto actorId = actor->GetFormID();
+  // A regeneration's own synchronous rebuild must not supersede itself and
+  // turn one request into a chain of fresh requests.
+  const auto* scope = Hdn::RemoteFaceTintScope::Current();
+  if (scope && scope->actorId == actorId)
+    return;
+  std::lock_guard lock(share2.m);
+  auto owner = share2.faceOwners.find(actorId);
+  if (owner == share2.faceOwners.end())
+    return;
+  if (!ValidFaceOwner(actorId, owner->second) ||
+      owner->second.handle.get().get() != actor) {
+    RetireFaceOwner(actorId);
+    return;
+  }
+  (void)share2.faceQueue.Request(actorId, owner->second.baseId);
+}
+
+void TESModPlatform::ClearRemoteFaceState()
+{
+  std::lock_guard lock(share2.m);
+  ++share2.faceEpoch;
+  share2.faceQueue.Clear();
+  share2.faceOwners.clear();
+}
+
+namespace TESModPlatform {
+namespace {
+struct RemoteFaceJob
+{
+  Hdn::RemoteFaceRegenQueue::Ticket ticket;
+  uint64_t epoch;
+  RE::ActorHandle handle;
+  std::shared_ptr<const Hdn::RemoteFaceTintSnapshot> snapshot;
+};
+
+bool CurrentFaceJob(const RemoteFaceJob& job)
+{
+  if (job.epoch != share2.faceEpoch || !share2.faceQueue.IsCurrent(job.ticket))
+    return false;
+  const auto owner = share2.faceOwners.find(job.ticket.actor);
+  return owner != share2.faceOwners.end() &&
+         owner->second.baseId == job.ticket.base &&
+         owner->second.snapshot == job.snapshot &&
+         owner->second.handle == job.handle &&
+         ValidFaceOwner(job.ticket.actor, owner->second);
+}
+
+void RunRemoteFaceJob(const RemoteFaceJob& job)
+{
+  using Result = Hdn::RemoteFaceRegenQueue::Result;
+  RE::NiPointer<RE::Actor> actor;
+  {
+    std::lock_guard lock(share2.m);
+    if (!CurrentFaceJob(job)) {
+      share2.faceQueue.Complete(job.ticket, Result::Drop);
+      auto owner = share2.faceOwners.find(job.ticket.actor);
+      if (owner != share2.faceOwners.end() && !ValidFaceOwner(job.ticket.actor, owner->second))
+        RetireFaceOwner(job.ticket.actor);
+      return;
+    }
+    actor = job.handle.get();
+  }
+  // This callback runs on SKSE's official task queue, exactly as its
+  // InternalTaskRegenerateHead does. Never hold share2.m across an engine
+  // call: ApplyMasks reads only the held TLS snapshot and takes no mutex.
+  Hdn::RemoteFaceRegenResult result;
+  try {
+    result = Hdn::RegenerateRemoteFace(actor.get(), job.ticket.base, job.snapshot);
+  } catch (...) {
+    result.result = Result::Drop;
+  }
+  bool stillCurrent = false;
+  {
+    std::lock_guard lock(share2.m);
+    stillCurrent = CurrentFaceJob(job);
+    share2.faceQueue.Complete(job.ticket, stillCurrent ? result.result : Result::Drop);
+    if (!stillCurrent) {
+      auto owner = share2.faceOwners.find(job.ticket.actor);
+      if (owner != share2.faceOwners.end() && !ValidFaceOwner(job.ticket.actor, owner->second))
+        RetireFaceOwner(job.ticket.actor);
+    }
+  }
+  if (stillCurrent)
+    Hdn::LogRemoteFaceRegen(job.ticket.actor, job.ticket.base,
+                            job.snapshot->masks.size(), result);
+}
+}
+}
+
+void TESModPlatform::UpdateRemoteFaceTints()
+{
+  if (!FaceRuntimeSupported())
+    return;
+  std::optional<RemoteFaceJob> job;
+  {
+    std::lock_guard lock(share2.m);
+    auto ticket = share2.faceQueue.Tick();
+    if (!ticket)
+      return;
+    auto owner = share2.faceOwners.find(ticket->actor);
+    if (owner == share2.faceOwners.end() ||
+        owner->second.baseId != ticket->base ||
+        !ValidFaceOwner(ticket->actor, owner->second) ||
+        !owner->second.snapshot || owner->second.snapshot->masks.empty()) {
+      RetireFaceOwner(ticket->actor);
+      share2.faceQueue.Complete(*ticket, Hdn::RemoteFaceRegenQueue::Result::Drop);
+      return;
+    }
+    job = RemoteFaceJob{ *ticket, share2.faceEpoch, owner->second.handle,
+                         owner->second.snapshot };
+  }
+  try {
+    auto* tasks = SKSE::GetTaskInterface();
+    if (!tasks)
+      throw std::runtime_error("SKSE task interface unavailable");
+    tasks->AddTask([held = *job] { RunRemoteFaceJob(held); });
+  } catch (...) {
+    std::lock_guard lock(share2.m);
+    share2.faceQueue.Complete(job->ticket, Hdn::RemoteFaceRegenQueue::Result::Drop);
+  }
 }
 
 bool TESModPlatform::GetPapyrusEventsBlocked()
@@ -1139,6 +1422,7 @@ bool TESModPlatform::Register(IVM* vm)
       "CloseMenu", "TESModPlatform", CloseMenu));
 
   static LoadGameEvent loadGameEvent;
+  static RemoteFaceDeleteEvent remoteFaceDeleteEvent;
 
   return true;
 }

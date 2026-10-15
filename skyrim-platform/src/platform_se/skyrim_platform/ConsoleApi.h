@@ -1,12 +1,16 @@
 #pragma once
 
 #include "NapiHelper.h"
+#include <string_view>
 
 namespace ConsoleApi {
 
 Napi::Value PrintConsole(const Napi::CallbackInfo& info);
 Napi::Value FindConsoleCommand(const Napi::CallbackInfo& info);
 Napi::Value WriteLogs(const Napi::CallbackInfo& info);
+// C++ diagnostics only; shares the existing launcher-collected log writer.
+// Does not enter JS, the VM or the in-game console.
+void WriteNativeDiagnosticLine(std::string_view line) noexcept;
 Napi::Value SetPrintConsolePrefixesEnabled(const Napi::CallbackInfo& info);
 
 void Clear();

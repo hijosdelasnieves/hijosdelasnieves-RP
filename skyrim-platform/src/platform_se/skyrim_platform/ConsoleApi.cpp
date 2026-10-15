@@ -23,6 +23,19 @@ struct ConsoleCommand
 };
 static std::map<std::string, ConsoleCommand> g_replacedConsoleCmd;
 static bool g_printConsolePrefixesEnabled = true;
+static std::map<std::string, std::unique_ptr<std::ofstream>> g_logStreams;
+static std::mutex g_logStreamsMutex;
+
+void WriteLogLine(const std::string& pluginName, std::string_view line)
+{
+  std::lock_guard lock(g_logStreamsMutex);
+  auto& stream = g_logStreams[pluginName];
+  if (!stream) {
+    stream = std::make_unique<std::ofstream>(
+      "Data\\Platform\\Logs\\" + pluginName + "-logs.txt");
+  }
+  (*stream) << line << std::endl;
+}
 
 bool IsNameEqual(const std::string& first, const std::string& second)
 {
@@ -399,13 +412,6 @@ Napi::Value ConsoleApi::WriteLogs(const Napi::CallbackInfo& info)
     throw InvalidArgumentException("pluginName", pluginName);
   }
 
-  static std::map<std::string, std::unique_ptr<std::ofstream>> g_m;
-
-  if (!g_m[pluginName]) {
-    g_m[pluginName] = std::make_unique<std::ofstream>(
-      "Data\\Platform\\Logs\\" + pluginName + "-logs.txt");
-  }
-
   std::string s;
 
   for (size_t i = 1; i < info.Length(); ++i) {
@@ -426,8 +432,17 @@ Napi::Value ConsoleApi::WriteLogs(const Napi::CallbackInfo& info)
     s += str.ToString().Utf8Value() + ' ';
   }
 
-  (*g_m[pluginName]) << s << std::endl;
+  WriteLogLine(pluginName, s);
   return info.Env().Undefined();
+}
+
+void ConsoleApi::WriteNativeDiagnosticLine(std::string_view line) noexcept
+{
+  try {
+    WriteLogLine("skyrim-platform", line);
+  } catch (...) {
+    // Diagnostic output must not interrupt an engine task.
+  }
 }
 
 Napi::Value ConsoleApi::SetPrintConsolePrefixesEnabled(

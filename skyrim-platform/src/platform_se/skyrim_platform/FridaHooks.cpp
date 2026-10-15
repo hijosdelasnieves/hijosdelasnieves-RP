@@ -4,9 +4,11 @@
 #include "FridaHooksUtils.h"
 #include "Override.h"
 #include "PapyrusTESModPlatform.h"
+#include "RemoteFaceRegen.h"
 #include "StringHolder.h"
 
 #include <fmt/format.h>
+#include <new>
 
 /**
  * Send Event hook
@@ -210,14 +212,39 @@ void InstallSendAnimationEventHook()
  */
 thread_local uint32_t g_queueNiNodeActorId = 0;
 
+struct QueueNiNodeInvocationData
+{
+  uint32_t previousActorId;
+  bool active;
+};
+
 void OnQueueNinodeUpdateEnter(GumInvocationContext* ic)
 {
+  auto* data = GUM_IC_GET_INVOCATION_DATA(ic, QueueNiNodeInvocationData);
+  if (!data) {
+    g_queueNiNodeActorId = 0;
+    return;
+  }
+  data->previousActorId = g_queueNiNodeActorId;
+  data->active = true;
+  g_queueNiNodeActorId = 0;
   auto refr = ic->cpu_context->rcx ? (RE::TESObjectREFR*)(ic->cpu_context->rcx)
                                    : nullptr;
+  auto* actor = refr ? refr->As<RE::Actor>() : nullptr;
+  if (actor) {
+    TESModPlatform::QueueRemoteFaceTintRefresh(actor);
+    auto tints = TESModPlatform::GetTintsFor(actor->GetFormID());
+    if (tints && !tints->empty())
+      g_queueNiNodeActorId = actor->GetFormID();
+  }
+}
 
-  uint32_t id = refr ? refr->formID : 0;
-
-  g_queueNiNodeActorId = id;
+void OnQueueNinodeUpdateLeave(GumInvocationContext* ic)
+{
+  auto* data = GUM_IC_GET_INVOCATION_DATA(ic, QueueNiNodeInvocationData);
+  g_queueNiNodeActorId = data && data->active ? data->previousActorId : 0;
+  if (data)
+    data->active = false;
 }
 
 void InstallQueueNinodeUpdateHook()
@@ -225,22 +252,52 @@ void InstallQueueNinodeUpdateHook()
   Frida::HookHandler::GetSingleton()->Install(
     Frida::HookID::QUEUE_NINODE_UPDATE,
     Offsets::Hooks::QueueNinodeUpdate.address(),
-    std::make_shared<Frida::Hook>(OnQueueNinodeUpdateEnter, nullptr));
+    std::make_shared<Frida::Hook>(OnQueueNinodeUpdateEnter, OnQueueNinodeUpdateLeave));
 }
 
 /**
  * Apply Masks To Render Targets hook
  */
+struct ApplyMasksInvocationData
+{
+  std::shared_ptr<RE::BSTArray<RE::TintMask*>>* heldTints;
+};
+
 void OnApplyMasksToRenderTargetsEnter(GumInvocationContext* ic)
 {
+  auto* data = GUM_IC_GET_INVOCATION_DATA(ic, ApplyMasksInvocationData);
+  if (data)
+    data->heldTints = nullptr;
+  if (auto* context = Hdn::RemoteFaceTintScope::Current()) {
+    // The official SKSE callback already resolved the handle and owns this
+    // immutable snapshot. No VM call, lookup, mutex or GPU allocation here.
+    if (context->snapshot && !context->snapshot->masks.empty()) {
+      gum_invocation_context_replace_nth_argument(
+        ic, 0, const_cast<RE::BSTArray<RE::TintMask*>*>(&context->snapshot->masks));
+      ++context->applyCount;
+      Hdn::LogRemoteFaceApply(*context);
+    }
+    return;
+  }
   if (g_queueNiNodeActorId > 0) {
     auto tints = TESModPlatform::GetTintsFor(g_queueNiNodeActorId);
-    if (tints) {
-      gum_invocation_context_replace_nth_argument(ic, 0, tints.get());
+    if (tints && data) {
+      data->heldTints = new (std::nothrow) std::shared_ptr<RE::BSTArray<RE::TintMask*>>(tints);
+      if (data->heldTints)
+        gum_invocation_context_replace_nth_argument(ic, 0, data->heldTints->get());
     }
   }
 
   g_queueNiNodeActorId = 0;
+}
+
+void OnApplyMasksToRenderTargetsLeave(GumInvocationContext* ic)
+{
+  auto* data = GUM_IC_GET_INVOCATION_DATA(ic, ApplyMasksInvocationData);
+  if (data) {
+    delete data->heldTints;
+    data->heldTints = nullptr;
+  }
 }
 
 void InstallApplyMasksToRenderTargetsHook()
@@ -248,7 +305,8 @@ void InstallApplyMasksToRenderTargetsHook()
   Frida::HookHandler::GetSingleton()->Install(
     Frida::HookID::APPLY_MASKS_TO_RENDER_TARGET,
     Offsets::Hooks::ApplyMasksToRenderTargets.address(),
-    std::make_shared<Frida::Hook>(OnApplyMasksToRenderTargetsEnter, nullptr));
+    std::make_shared<Frida::Hook>(OnApplyMasksToRenderTargetsEnter,
+                                 OnApplyMasksToRenderTargetsLeave));
 }
 
 /**

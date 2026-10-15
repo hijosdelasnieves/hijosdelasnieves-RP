@@ -84,6 +84,7 @@ void OnUpdate(IVM* vm, StackID stackId)
   });
   SkyrimPlatform::GetSingleton()->StartWorker();
   g_nativeCallRequirements.gameThrQ->Update(Viet::Void());
+  TESModPlatform::UpdateRemoteFaceTints();
   ObjectReferenceApi::MaintainCharacterControllerCollisionProfiles();
   g_nativeCallRequirements.stackId = std::numeric_limits<StackID>::max();
   g_nativeCallRequirements.vm = nullptr;
@@ -182,6 +183,9 @@ DLLEXPORT bool SKSEAPI SKSEPlugin_Load_Impl(const SKSE::LoadInterface* skse)
 
   SKSE::GetMessagingInterface()->RegisterListener(
     [](SKSE::MessagingInterface::Message* a_msg) {
+      if (a_msg && a_msg->type == SKSE::MessagingInterface::kPreLoadGame) {
+        TESModPlatform::ClearRemoteFaceState();
+      }
       if (a_msg && a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
         HdnVanillaMenuPolicy::EnsureInputFence();
       }

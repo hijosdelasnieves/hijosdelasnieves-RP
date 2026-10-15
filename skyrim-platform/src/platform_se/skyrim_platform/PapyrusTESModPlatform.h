@@ -6,6 +6,9 @@
 
 namespace TESModPlatform {
 extern std::function<void(IVM* vm, StackID stackId)> onPapyrusUpdate;
+void QueueRemoteFaceTintRefresh(RE::Actor* actor);
+void UpdateRemoteFaceTints();
+void ClearRemoteFaceState();
 
 int32_t Add(IVM* vm, StackID stackId, RE::StaticFunctionTag*, int32_t, int32_t,
             int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t,

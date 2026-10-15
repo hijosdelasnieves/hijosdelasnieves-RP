@@ -272,6 +272,7 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: SkyrimPlatform ${{ steps.meta.outputs.version }}
+          prerelease: ${{ startsWith(inputs.tag || github.ref_name, 'sp-candidate-') }}
           body: |
             Build oficial de SkyrimPlatform.dll para Hijos de las Nieves.
 
@@ -280,8 +281,8 @@ jobs:
             - SHA256: `${{ steps.pack.outputs.sha256 }}`
             - Size: `${{ steps.pack.outputs.size }}` bytes
 
-            Lock-step con el server SkyMP en produccion. Instalar via launcher
-            o descomprimir manualmente sobre la raiz de `Skyrim Special Edition`.
+            Las etiquetas sp-candidate-* son versiones de prueba. El maestro
+            de cada entorno decide el paquete que distribuye su lanzador.
           files: |
             SkyrimPlatform-*.zip
             skyrim-platform-latest.json
