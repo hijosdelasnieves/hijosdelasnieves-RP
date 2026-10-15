@@ -108,6 +108,9 @@ std::shared_ptr<RE::BSTArray<RE::TintMask*>> GetTintsFor(uint32_t actorId);
 bool GetPapyrusEventsBlocked();
 
 void Update();
+// Internal game-thread work; these are not Papyrus/JS entry points.
+void QueueRemoteFaceTintRefresh(RE::Actor* actor);
+void UpdateRemoteFaceTints();
 
 bool Register(IVM* vm);
 }

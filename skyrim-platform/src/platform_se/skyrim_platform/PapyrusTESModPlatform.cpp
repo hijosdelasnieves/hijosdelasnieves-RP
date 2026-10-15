@@ -3,6 +3,8 @@
 #include "ConsoleApi.h"
 #include "ExceptionPrinter.h"
 #include "NullPointerException.h"
+#include "RemoteFaceTintRenderer.h"
+#include "RemoteFaceTintQueue.h"
 
 #include <RE/B/BSPointerHandle.h>
 #include <RE/N/NiPoint3.h>
@@ -27,6 +29,13 @@ struct
 {
   // index is formID-0xff000000
   std::vector<std::shared_ptr<RE::BSTArray<RE::TintMask*>>> actorsTints;
+  struct FaceOwner
+  {
+    RE::ActorHandle handle;
+    uint32_t baseId;
+  };
+  std::unordered_map<uint32_t, FaceOwner> faceOwners;
+  Hdn::RemoteFaceTintQueue faceQueue;
   std::recursive_mutex m;
 } share2;
 
@@ -95,6 +104,16 @@ private:
     RE::BSTEventSource<RE::TESLoadGameEvent>* eventSource) override
   {
     vmCallAllowed = true;
+    // Handles/FormIDs may be reused by a new loaded world. Retire only the
+    // appearance snapshots introduced by this renderer before JS load handlers.
+    std::lock_guard l(share2.m);
+    for (const auto& entry : share2.faceOwners) {
+      const auto index = entry.first - 0xff000000;
+      if (index < share2.actorsTints.size())
+        share2.actorsTints[index].reset();
+    }
+    share2.faceOwners.clear();
+    share2.faceQueue = Hdn::RemoteFaceTintQueue{};
     return RE::BSEventNotifyControl::kContinue;
   }
 };
@@ -508,6 +527,8 @@ void TESModPlatform::ClearTintMasks(IVM* vm, StackID stackId,
   std::lock_guard l(share2.m);
   if (share2.actorsTints.size() > i)
     share2.actorsTints[i].reset();
+  share2.faceQueue.Cancel(targetActor->GetFormID());
+  share2.faceOwners.erase(targetActor->GetFormID());
 }
 
 void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
@@ -531,14 +552,30 @@ void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
   newTm->color.green = COLOR_GREEN(argb);
   newTm->color.blue = COLOR_BLUE(argb);
 
-  newTm->texture = RE::malloc<RE::TESTexture>();
-  if (!newTm->texture)
-    return;
-
-  // Not even trying to copy BSFixedString since we do not construct
-  // BSFixedString properly
-  reinterpret_cast<const char*&>(newTm->texture->textureName) =
-    texturePath.c_str();
+  if (targetActor && REL::Module::IsAE()) {
+    // Explicit remote FaceGen calls the texture component's virtual methods.
+    // Construct it with the game so its vtable and BSFixedString are valid;
+    // the old raw allocation supplied neither. AE ctor matches the runtime
+    // used by Skyrim Together's TESTexture::Construct (Address Library 14953).
+    newTm->texture = RE::calloc<RE::TESTexture>(1, sizeof(RE::TESTexture));
+    if (!newTm->texture) {
+      RE::free(newTm);
+      return;
+    }
+    using TextureConstructor = void (*)(RE::TESTexture*);
+    static REL::Relocation<TextureConstructor> construct{ REL::ID(14953) };
+    construct(newTm->texture);
+    newTm->texture->InitializeDataComponent();
+    newTm->texture->textureName = texturePath;
+  } else {
+    // Local player / non-AE retain their existing path.
+    newTm->texture = RE::malloc<RE::TESTexture>();
+    if (!newTm->texture) {
+      RE::free(newTm);
+      return;
+    }
+    reinterpret_cast<const char*&>(newTm->texture->textureName) = texturePath.c_str();
+  }
 
   newTm->tintType = type;
 
@@ -571,6 +608,14 @@ void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
   }
 
   share2.actorsTints[i] = tints;
+  if (REL::Module::IsAE()) {
+    auto* base = targetActor->GetActorBase();
+    if (base && base->GetFormID() >= 0xff000000) {
+      share2.faceOwners[targetActor->GetFormID()] =
+        { RE::ActorHandle(targetActor), base->GetFormID() };
+      (void)share2.faceQueue.Request(targetActor->GetFormID(), base->GetFormID());
+    }
+  }
 }
 
 namespace {
@@ -981,7 +1026,77 @@ std::shared_ptr<RE::BSTArray<RE::TintMask*>> TESModPlatform::GetTintsFor(
   if (i >= share2.actorsTints.size()) {
     return nullptr;
   }
+  auto owner = share2.faceOwners.find(actorId);
+  if (owner != share2.faceOwners.end()) {
+    auto actor = owner->second.handle.get();
+    auto* base = actor ? actor->GetActorBase() : nullptr;
+    if (!actor || actor->GetFormID() != actorId || !base ||
+        base->GetFormID() != owner->second.baseId) {
+      share2.actorsTints[i].reset();
+      share2.faceQueue.Cancel(actorId);
+      share2.faceOwners.erase(owner);
+      return nullptr;
+    }
+  }
   return share2.actorsTints[i];
+}
+
+// A NiNode rebuild invalidates its rendered tint texture even if the tint
+// payload did not change. Schedule only explicitly registered appearance refs.
+void TESModPlatform::QueueRemoteFaceTintRefresh(RE::Actor* actor)
+{
+  if (!actor || actor->GetFormID() < 0xff000000)
+    return;
+  std::lock_guard l(share2.m);
+  auto it = share2.faceOwners.find(actor->GetFormID());
+  if (it == share2.faceOwners.end())
+    return;
+  auto owner = it->second.handle.get();
+  auto* base = actor->GetActorBase();
+  if (owner.get() != actor || !base || base->GetFormID() != it->second.baseId)
+    return;
+  (void)share2.faceQueue.Request(actor->GetFormID(), it->second.baseId);
+}
+
+void TESModPlatform::UpdateRemoteFaceTints()
+{
+  std::lock_guard l(share2.m);
+  if (share2.faceQueue.Empty())
+    return;
+  unsigned rendered = 0;
+  share2.faceQueue.Tick([&](uint32_t actorId, uint32_t expectedBase) {
+    using Result = Hdn::RemoteFaceTintQueue::Result;
+    auto it = share2.faceOwners.find(actorId);
+    if (it == share2.faceOwners.end() || it->second.baseId != expectedBase)
+      return Result::Drop;
+    // Resolve a generation-bearing engine handle each update. A reused FormID
+    // after a disconnect/load cannot inherit this appearance job.
+    auto actor = it->second.handle.get();
+    if (!actor || actor->GetFormID() != actorId)
+      return Result::Drop;
+    auto* base = actor->GetActorBase();
+    if (!base || base->GetFormID() != expectedBase)
+      return Result::Drop;
+    auto tints = GetTintsFor(actorId);
+    if (!tints || tints->empty())
+      return Result::Drop;
+    if (rendered >= 2)
+      return Result::Retry;
+    auto result = Hdn::RenderRemoteFaceTints(actor.get(), expectedBase, *tints);
+    if (result == Hdn::RemoteFaceTintResult::Retry)
+      return Result::Retry;
+    if (result != Hdn::RemoteFaceTintResult::Applied)
+      return Result::Drop;
+    ++rendered;
+    static std::atomic<unsigned> observed{ 0 };
+    if (observed.fetch_add(1, std::memory_order_relaxed) < 16) {
+      try {
+        logger::info("[HDN][caras-remotas-v1] stage=texture actor={:08x} masks={}",
+                     actorId, tints->size());
+      } catch (...) {}
+    }
+    return Result::Done;
+  });
 }
 
 bool TESModPlatform::GetPapyrusEventsBlocked()

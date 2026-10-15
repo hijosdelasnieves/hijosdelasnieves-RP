@@ -84,6 +84,7 @@ void OnUpdate(IVM* vm, StackID stackId)
   });
   SkyrimPlatform::GetSingleton()->StartWorker();
   g_nativeCallRequirements.gameThrQ->Update(Viet::Void());
+  TESModPlatform::UpdateRemoteFaceTints();
   ObjectReferenceApi::MaintainCharacterControllerCollisionProfiles();
   g_nativeCallRequirements.stackId = std::numeric_limits<StackID>::max();
   g_nativeCallRequirements.vm = nullptr;

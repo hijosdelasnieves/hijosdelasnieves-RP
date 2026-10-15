@@ -7,6 +7,7 @@
 #include "StringHolder.h"
 
 #include <fmt/format.h>
+#include <atomic>
 
 /**
  * Send Event hook
@@ -218,6 +219,22 @@ void OnQueueNinodeUpdateEnter(GumInvocationContext* ic)
   uint32_t id = refr ? refr->formID : 0;
 
   g_queueNiNodeActorId = id;
+  if (refr && refr->GetFormType() == RE::FormType::ActorCharacter) {
+    TESModPlatform::QueueRemoteFaceTintRefresh(static_cast<RE::Actor*>(refr));
+  }
+
+  // HDN: bounded evidence for the remote-only FaceGen pipeline. No names,
+  // positions, appearance payloads or extra work once the first 16 calls log.
+  static std::atomic<unsigned> observed{ 0 };
+  if (id >= 0xff000000 && observed.load(std::memory_order_relaxed) < 16) {
+    auto tints = TESModPlatform::GetTintsFor(id);
+    if (tints && observed.fetch_add(1, std::memory_order_relaxed) < 16) {
+      try {
+        logger::info("[HDN][caras-remotas-v1] stage=rebuild actor={:08x} masks={}",
+                     id, tints->size());
+      } catch (...) { /* Diagnostics must not affect the game. */ }
+    }
+  }
 }
 
 void InstallQueueNinodeUpdateHook()
@@ -237,10 +254,35 @@ void OnApplyMasksToRenderTargetsEnter(GumInvocationContext* ic)
     auto tints = TESModPlatform::GetTintsFor(g_queueNiNodeActorId);
     if (tints) {
       gum_invocation_context_replace_nth_argument(ic, 0, tints.get());
+      static std::atomic<unsigned> observed{ 0 };
+      if (observed.load(std::memory_order_relaxed) < 16 &&
+          observed.fetch_add(1, std::memory_order_relaxed) < 16) {
+        try {
+          logger::info("[HDN][caras-remotas-v1] stage=apply actor={:08x} masks={}",
+                       g_queueNiNodeActorId, tints->size());
+        } catch (...) { /* Diagnostics must not affect the game. */ }
+      }
     }
   }
 
   g_queueNiNodeActorId = 0;
+}
+
+namespace Frida {
+void ApplyRemoteFaceTintMasks(uint32_t actorId,
+                             const RE::BSTArray<RE::TintMask*>& masks,
+                             RE::NiSourceTexture* texture)
+{
+  struct ContextGuard
+  {
+    uint32_t previous = g_queueNiNodeActorId;
+    ~ContextGuard() { g_queueNiNodeActorId = previous; }
+  } guard;
+  g_queueNiNodeActorId = actorId;
+  using Apply = void (*)(const RE::BSTArray<RE::TintMask*>&, RE::NiSourceTexture*);
+  REL::Relocation<Apply> apply{ Offsets::Hooks::ApplyMasksToRenderTargets.address() };
+  apply(masks, texture);
+}
 }
 
 void InstallApplyMasksToRenderTargetsHook()
