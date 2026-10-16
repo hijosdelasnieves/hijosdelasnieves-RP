@@ -74,6 +74,9 @@ void UpdateDumpFunctions()
 void OnUpdate(IVM* vm, StackID stackId)
 {
   UpdateDumpFunctions();
+  // HDN 16/10/2026: si otro programa sustituye nuestro gancho de Present (la
+  // capa dejaría de pintarse), se vuelve a enganchar encadenándolo.
+  CEFUtils::D3D11Hook::EnsurePresentHook();
 
   g_nativeCallRequirements.stackId = stackId;
   g_nativeCallRequirements.vm = vm;

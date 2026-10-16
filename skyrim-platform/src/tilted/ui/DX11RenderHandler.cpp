@@ -1,6 +1,7 @@
 #include "DInputHook.hpp"
 #include "HdnLoggerNativeBarModel.h"
 #include "TextToDraw.h"
+#include <OverlayStats.hpp>
 #include <DX11RenderHandler.h>
 #include <DirectXColors.h>
 #include <DirectXTK/DDSTextureLoader.h>
@@ -44,6 +45,28 @@ DX11RenderHandler::~DX11RenderHandler()
 void DX11RenderHandler::Render(
   const ObtainTextsToDrawFunction& obtainTextsToDraw)
 {
+  auto& stats = GetOverlayStats();
+
+  // HDN 16/10/2026: si la cadena de presentación ya no es del dispositivo con
+  // el que se crearon los recursos (cambio de modo, envoltorios), se rehacen.
+  if (m_pDevice) {
+    Microsoft::WRL::ComPtr<ID3D11Device> pSwapDevice;
+    auto* pSwapChain = m_pRenderer->GetSwapChain();
+    if (pSwapChain &&
+        SUCCEEDED(pSwapChain->GetDevice(
+          IID_ID3D11Device,
+          reinterpret_cast<void**>(pSwapDevice.GetAddressOf()))) &&
+        pSwapDevice && pSwapDevice.Get() != m_pDevice.Get()) {
+      stats.deviceChanges.fetch_add(1, std::memory_order_relaxed);
+      {
+        std::unique_lock<std::mutex> _(m_textureLock);
+        m_pTexture.Reset();
+        m_pTextureView.Reset();
+      }
+      Create();
+    }
+  }
+
   // We need contexts first
   if (!m_pImmediateContext || !m_pContext) {
     Create();
@@ -65,6 +88,95 @@ void DX11RenderHandler::Render(
     }
   }
   GetRenderTargetSize();
+
+  // HDN 16/10/2026: la capa (navegador, textos, cursor) se pinta en el búfer de
+  // la pantalla con su área entera, no en el destino y el área que el juego
+  // haya dejado puestos al presentar. Tras un Alt+Tab el juego podía dejar
+  // otros y toda la capa desaparecía a la vez. Lo del juego se restaura al
+  // terminar. El búfer solo se retiene durante este fotograma (ResizeBuffers
+  // exige que nadie lo tenga).
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pBackBufferView;
+  D3D11_VIEWPORT backViewport{};
+  {
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> pBackBuffer;
+    auto* pSwapChain = m_pRenderer->GetSwapChain();
+    if (pSwapChain &&
+        SUCCEEDED(pSwapChain->GetBuffer(
+          0, IID_PPV_ARGS(pBackBuffer.GetAddressOf()))) &&
+        pBackBuffer) {
+      D3D11_TEXTURE2D_DESC desc{};
+      pBackBuffer->GetDesc(&desc);
+      if (SUCCEEDED(m_pDevice->CreateRenderTargetView(
+            pBackBuffer.Get(), nullptr, pBackBufferView.GetAddressOf()))) {
+        backViewport.Width = static_cast<float>(desc.Width);
+        backViewport.Height = static_cast<float>(desc.Height);
+        backViewport.MaxDepth = 1.f;
+        stats.backWidth.store(desc.Width, std::memory_order_relaxed);
+        stats.backHeight.store(desc.Height, std::memory_order_relaxed);
+
+        // Lo que tenía puesto el juego (para la telemetría).
+        Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pBound;
+        m_pImmediateContext->OMGetRenderTargets(1, pBound.GetAddressOf(),
+                                                nullptr);
+        if (!pBound) {
+          stats.noBound.fetch_add(1, std::memory_order_relaxed);
+        } else {
+          Microsoft::WRL::ComPtr<ID3D11Resource> pBoundResource;
+          Microsoft::WRL::ComPtr<ID3D11Texture2D> pBoundTexture;
+          pBound->GetResource(pBoundResource.GetAddressOf());
+          if (pBoundResource)
+            pBoundResource.As(&pBoundTexture);
+          if (pBoundTexture.Get() != pBackBuffer.Get()) {
+            stats.boundOther.fetch_add(1, std::memory_order_relaxed);
+            if (pBoundTexture) {
+              D3D11_TEXTURE2D_DESC boundDesc{};
+              pBoundTexture->GetDesc(&boundDesc);
+              stats.boundWidth.store(boundDesc.Width,
+                                     std::memory_order_relaxed);
+              stats.boundHeight.store(boundDesc.Height,
+                                      std::memory_order_relaxed);
+            }
+          }
+        }
+        UINT boundViewports = 1;
+        D3D11_VIEWPORT boundViewport{};
+        m_pImmediateContext->RSGetViewports(&boundViewports, &boundViewport);
+        if (boundViewports == 0 || boundViewport.TopLeftX != 0.f ||
+            boundViewport.TopLeftY != 0.f ||
+            boundViewport.Width != backViewport.Width ||
+            boundViewport.Height != backViewport.Height) {
+          stats.viewportOther.fetch_add(1, std::memory_order_relaxed);
+          stats.viewportWidth.store(
+            static_cast<uint32_t>(boundViewport.Width),
+            std::memory_order_relaxed);
+          stats.viewportHeight.store(
+            static_cast<uint32_t>(boundViewport.Height),
+            std::memory_order_relaxed);
+        }
+      }
+    } else {
+      stats.noBackBuffer.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+
+  ID3D11RenderTargetView*
+    gameRenderTargets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+  ID3D11DepthStencilView* gameDepthStencil = nullptr;
+  D3D11_VIEWPORT
+    gameViewports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE] =
+      {};
+  UINT gameViewportCount =
+    D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+  if (pBackBufferView) {
+    m_pImmediateContext->OMGetRenderTargets(
+      D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, gameRenderTargets,
+      &gameDepthStencil);
+    m_pImmediateContext->RSGetViewports(&gameViewportCount, gameViewports);
+    ID3D11RenderTargetView* pTarget = pBackBufferView.Get();
+    m_pImmediateContext->OMSetRenderTargets(1, &pTarget, nullptr);
+    m_pImmediateContext->RSSetViewports(1, &backViewport);
+    m_pSpriteBatch->SetViewport(backViewport);
+  }
 
   m_pSpriteBatch->Begin(DirectX::SpriteSortMode_Deferred,
                         m_pStates->NonPremultiplied());
@@ -130,6 +242,19 @@ void DX11RenderHandler::Render(
   }
 
   m_pSpriteBatch->End();
+
+  if (pBackBufferView) {
+    m_pImmediateContext->OMSetRenderTargets(
+      D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, gameRenderTargets,
+      gameDepthStencil);
+    m_pImmediateContext->RSSetViewports(gameViewportCount, gameViewports);
+    for (auto* pView : gameRenderTargets)
+      if (pView)
+        pView->Release();
+    if (gameDepthStencil)
+      gameDepthStencil->Release();
+  }
+  stats.renders.fetch_add(1, std::memory_order_relaxed);
 }
 
 void DX11RenderHandler::Reset()
@@ -264,17 +389,30 @@ void DX11RenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
 
 void DX11RenderHandler::GetRenderTargetSize()
 {
+  // HDN 16/10/2026: el tamaño de la capa es el del búfer de la pantalla; antes
+  // se tomaba del destino que el juego tuviera puesto al presentar, y uno
+  // distinto (tras un Alt+Tab) redimensionaba el navegador a ese tamaño.
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> pBackBuffer;
+  if (auto* pSwapChain = m_pRenderer->GetSwapChain())
+    pSwapChain->GetBuffer(0, IID_PPV_ARGS(pBackBuffer.GetAddressOf()));
+
   Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pRenderTargetView;
 
-  m_pImmediateContext->OMGetRenderTargets(
-    1, pRenderTargetView.ReleaseAndGetAddressOf(), nullptr);
-  if (pRenderTargetView) {
+  if (!pBackBuffer)
+    m_pImmediateContext->OMGetRenderTargets(
+      1, pRenderTargetView.ReleaseAndGetAddressOf(), nullptr);
+  if (pBackBuffer || pRenderTargetView) {
     Microsoft::WRL::ComPtr<ID3D11Resource> pSrcResource;
-    pRenderTargetView->GetResource(pSrcResource.ReleaseAndGetAddressOf());
+    if (pBackBuffer)
+      pBackBuffer.As(&pSrcResource);
+    else
+      pRenderTargetView->GetResource(pSrcResource.ReleaseAndGetAddressOf());
 
     if (pSrcResource) {
       Microsoft::WRL::ComPtr<ID3D11Texture2D> pSrcBuffer;
       pSrcResource.As(&pSrcBuffer);
+      if (!pSrcBuffer)
+        return;
 
       D3D11_TEXTURE2D_DESC desc;
       pSrcBuffer->GetDesc(&desc);

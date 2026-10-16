@@ -1,5 +1,6 @@
 #include "TextApi.h"
 #include <Validators.h>
+#include <hooks/OverlayStats.hpp>
 
 namespace TextApi {
 
@@ -361,6 +362,31 @@ Napi::Value TextApi::GetTextRefrOffset(const Napi::CallbackInfo& info)
   return jsArray;
 }
 
+// HDN 16/10/2026: contadores del pintado de la capa (ver OverlayStats.hpp).
+Napi::Value TextApi::GetOverlayStats(const Napi::CallbackInfo& info)
+{
+  const auto& s = CEFUtils::GetOverlayStats();
+  auto obj = Napi::Object::New(info.Env());
+  auto num = [&](const char* aKey, double aValue) {
+    obj.Set(aKey, Napi::Number::New(info.Env(), aValue));
+  };
+  num("presents", static_cast<double>(s.presents.load()));
+  num("renders", static_cast<double>(s.renders.load()));
+  num("boundOther", static_cast<double>(s.boundOther.load()));
+  num("noBound", static_cast<double>(s.noBound.load()));
+  num("viewportOther", static_cast<double>(s.viewportOther.load()));
+  num("deviceChanges", static_cast<double>(s.deviceChanges.load()));
+  num("noBackBuffer", static_cast<double>(s.noBackBuffer.load()));
+  num("rearms", static_cast<double>(s.rearms.load()));
+  num("backWidth", s.backWidth.load());
+  num("backHeight", s.backHeight.load());
+  num("boundWidth", s.boundWidth.load());
+  num("boundHeight", s.boundHeight.load());
+  num("viewportWidth", s.viewportWidth.load());
+  num("viewportHeight", s.viewportHeight.load());
+  return obj;
+}
+
 Napi::Value TextApi::GetNumCreatedTexts(const Napi::CallbackInfo& info)
 {
   return Napi::Number::New(
@@ -620,6 +646,10 @@ void Register(Napi::Env env, Napi::Object& exports)
   exports.Set("getNumCreatedTexts",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(GetNumCreatedTexts)));
+
+  exports.Set("getOverlayStats",
+              Napi::Function::New(
+                env, NapiHelper::WrapCppExceptions(GetOverlayStats)));
 
   exports.Set("getTextRefrScreenOffset",
               Napi::Function::New(

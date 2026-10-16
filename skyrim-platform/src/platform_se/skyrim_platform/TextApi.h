@@ -47,6 +47,7 @@ Napi::Value GetTextRefrOffset(const Napi::CallbackInfo& info);
 Napi::Value GetTextRefrScreenOffset(const Napi::CallbackInfo& info);
 
 Napi::Value GetNumCreatedTexts(const Napi::CallbackInfo& info);
+Napi::Value GetOverlayStats(const Napi::CallbackInfo& info);
 
 void OnUpdate();
 
