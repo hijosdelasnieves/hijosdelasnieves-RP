@@ -4,6 +4,7 @@
 #include <OverlayClient.h>
 #include <filesystem>
 #include <functional>
+#include <spdlog/spdlog.h>
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
@@ -95,6 +96,10 @@ void OverlayClient::Reset() const noexcept
 void OverlayClient::OnAfterCreated(CefRefPtr<CefBrowser> aBrowser)
 {
   SetBrowser(aBrowser);
+  if (auto host = aBrowser->GetHost()) {
+    spdlog::info("[HDN] CEF windowless frame limit={} fps",
+                 host->GetWindowlessFrameRate());
+  }
 }
 
 void OverlayClient::OnBeforeClose(CefRefPtr<CefBrowser> aBrowser)

@@ -143,7 +143,9 @@ void MyChromiumApp::Initialize(bool initChromium) noexcept
 
   CefBrowserSettings browserSettings{};
 
-  browserSettings.windowless_frame_rate = 60;
+  // HDN: keep the overlay responsive on 144 Hz displays. CEF 108 accepts
+  // rates above 60; this is a maximum, not a timer for game updates.
+  browserSettings.windowless_frame_rate = 144;
 
   CefWindowInfo info;
   info.SetAsWindowless(m_pRenderProvider->GetWindow());

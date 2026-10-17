@@ -270,7 +270,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/sp-') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          # Candidate assets must not match sp-* auto-install channels.
+          tag_name: hdn-candidate-cef144-20261017-${{ github.sha }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
           name: SkyrimPlatform ${{ steps.meta.outputs.version }}
           body: |
             Build oficial de SkyrimPlatform.dll para Hijos de las Nieves.
