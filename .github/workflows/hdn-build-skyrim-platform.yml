@@ -16,6 +16,7 @@ on:
   push:
     tags:
       - "sp-*"
+      - "hdn-candidate-faces-*"
 
 permissions:
   contents: write
@@ -267,24 +268,23 @@ jobs:
           retention-days: 30
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/sp-') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/hdn-candidate-faces-')
         uses: softprops/action-gh-release@v2
         with:
           # Candidate assets must not match sp-* auto-install channels.
-          tag_name: hdn-candidate-cef144-20261017-${{ github.sha }}
+          tag_name: hdn-candidate-faces-20261017-${{ github.sha }}
           target_commitish: ${{ github.sha }}
           prerelease: true
-          name: SkyrimPlatform ${{ steps.meta.outputs.version }}
+          name: SkyrimPlatform DEV face layers ${{ steps.meta.outputs.version }}
           body: |
-            Build oficial de SkyrimPlatform.dll para Hijos de las Nieves.
+            Candidato aislado de DEV para generar las capas faciales antes de crear jugadores remotos.
 
             - Commit: `${{ steps.meta.outputs.sha }}`
             - Version: `${{ steps.meta.outputs.version }}`
             - SHA256: `${{ steps.pack.outputs.sha256 }}`
             - Size: `${{ steps.pack.outputs.size }}` bytes
 
-            Lock-step con el server SkyMP en produccion. Instalar via launcher
-            o descomprimir manualmente sobre la raiz de `Skyrim Special Edition`.
+            Sin promoción automática al lanzador ni a producción. Requiere composición y validación de DEV.
           files: |
             SkyrimPlatform-*.zip
             skyrim-platform-latest.json

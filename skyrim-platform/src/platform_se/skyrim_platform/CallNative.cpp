@@ -3,6 +3,7 @@
 #include "GetNativeFunctionAddr.h"
 #include "NullPointerException.h"
 #include "Overloaded.h"
+#include "PapyrusTESModPlatform.h"
 #include "SendAnimationEvent.h"
 #include "SkyrimPlatform.h"
 #include "StringHolder.h"
@@ -276,6 +277,15 @@ CallNative::AnySafe CallNative::CallNativeSafe(Arguments& args_)
     ss << "Function requires " << funcInfo->GetParamCount()
        << " arguments, but " << numArgs << " passed";
     throw std::runtime_error(ss.str());
+  }
+
+  // Seal only metadata for our fresh appearance bases, before PlaceAtMe can
+  // expose them to a background 3D loader. Argument0 is the base Form.
+  if (IsActorOrObjectRefr(className) && !stricmp(classFunc.data(), "placeAtMe") && numArgs > 0) {
+    if (const auto* object = std::get_if<ObjectPtr>(&args_.args[0]); object && *object) {
+      auto* base = static_cast<RE::TESForm*>((*object)->GetNativeObjectPtr());
+      TESModPlatform::NoteRemoteNpcBasePlacement(base);
+    }
   }
 
   auto f = funcInfo->GetIFunction();

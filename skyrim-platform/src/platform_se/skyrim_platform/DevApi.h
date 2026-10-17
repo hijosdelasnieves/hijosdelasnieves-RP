@@ -17,6 +17,7 @@ Napi::Value GetPlatformVersion(const Napi::CallbackInfo& info);
 Napi::Value GetJsMemoryUsage(const Napi::CallbackInfo& info);
 
 Napi::Value BlockPapyrusEvents(const Napi::CallbackInfo& info);
+Napi::Value ConfigureRemoteNpcTintLayers(const Napi::CallbackInfo& info);
 
 void DisableCtrlPrtScnHotkey();
 
@@ -83,6 +84,10 @@ inline void Register(Napi::Env env, Napi::Object& exports,
     "getHdnVanillaMenuPolicyState",
     Napi::Function::New(
       env, NapiHelper::WrapCppExceptions(GetHdnVanillaMenuPolicyState)));
+  exports.Set(
+    "configureRemoteNpcTintLayers",
+    Napi::Function::New(
+      env, NapiHelper::WrapCppExceptions(ConfigureRemoteNpcTintLayers)));
   exports.Set(
     "disableCtrlPrtScnHotkey",
     Napi::Function::New(env,

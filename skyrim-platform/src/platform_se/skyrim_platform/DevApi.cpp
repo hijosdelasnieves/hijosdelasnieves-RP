@@ -6,8 +6,44 @@
 #include "PapyrusTESModPlatform.h"
 #include "Settings.h"
 #include "Validators.h"
+#include <cmath>
 
 DevApi::NativeExportsMap DevApi::nativeExportsMap;
+
+Napi::Value DevApi::ConfigureRemoteNpcTintLayers(const Napi::CallbackInfo& info)
+{
+  const auto rawId = NapiHelper::ExtractDouble(info[0], "baseFormId");
+  if (!std::isfinite(rawId) || std::floor(rawId) != rawId || rawId < 0 || rawId > 4294967295.0)
+    throw std::runtime_error("baseFormId must be an unsigned integral FormID");
+  const auto baseId = static_cast<std::uint32_t>(rawId);
+  if (!info[1].IsArray()) throw std::runtime_error("masks must be an array");
+  const auto input = info[1].As<Napi::Array>();
+  if (input.Length() > Hdn::kRemoteFaceMaxMasks)
+    throw std::runtime_error("masks exceeds remote face limit");
+  std::vector<Hdn::RemoteFaceMask> masks;
+  masks.reserve(input.Length());
+  for (std::uint32_t i = 0; i < input.Length(); ++i) {
+    const auto entry = NapiHelper::ExtractObject(input.Get(i), "mask");
+    const auto type = NapiHelper::ExtractDouble(entry.Get("type"), "mask.type");
+    const auto color = NapiHelper::ExtractDouble(entry.Get("argb"), "mask.argb");
+    const auto path = NapiHelper::ExtractString(entry.Get("texturePath"), "mask.texturePath");
+    if (!std::isfinite(type) || std::floor(type) != type || type < 0 || type > 14 ||
+        !std::isfinite(color) || std::floor(color) != color || color < -2147483648.0 ||
+        color > 4294967295.0 || Hdn::NormalizeRemoteTintPath(path).empty())
+      throw std::runtime_error("invalid remote tint mask");
+    masks.push_back({ static_cast<std::int32_t>(type),
+      static_cast<std::uint32_t>(static_cast<std::int64_t>(color)), path });
+  }
+  const auto state = TESModPlatform::ConfigureRemoteNpcTintLayers(baseId, masks);
+  auto result = Napi::Object::New(info.Env());
+  result.Set("version", Napi::Number::New(info.Env(), 1));
+  result.Set("configured", Napi::Boolean::New(info.Env(), state.configured));
+  result.Set("layerCount", Napi::Number::New(info.Env(), static_cast<double>(state.layerCount)));
+  result.Set("matchedCount", Napi::Number::New(info.Env(), static_cast<double>(state.matchedCount)));
+  result.Set("missingCount", Napi::Number::New(info.Env(), static_cast<double>(state.missingCount)));
+  result.Set("reason", Napi::String::New(info.Env(), state.reason));
+  return result;
+}
 
 namespace {
 bool CreateDirectoryRecursive(const std::string& dirName, std::error_code& err)

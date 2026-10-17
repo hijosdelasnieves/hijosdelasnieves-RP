@@ -3,6 +3,7 @@
 #include <functional>
 
 #include "PCH.h"
+#include "RemoteNpcTintLayers.h"
 
 namespace TESModPlatform {
 extern std::function<void(IVM* vm, StackID stackId)> onPapyrusUpdate;
@@ -39,6 +40,18 @@ RE::BGSColorForm* GetSkinColor(IVM* vm, StackID stackId,
                                RE::StaticFunctionTag*, RE::TESNPC* base);
 
 RE::TESNPC* CreateNpc(IVM* vm, StackID stackId, RE::StaticFunctionTag*);
+
+struct RemoteNpcTintLayerResult
+{
+  bool configured = false;
+  std::size_t layerCount = 0;
+  std::size_t matchedCount = 0;
+  std::size_t missingCount = 0;
+  std::string reason;
+};
+RemoteNpcTintLayerResult ConfigureRemoteNpcTintLayers(
+  std::uint32_t baseFormId, const std::vector<Hdn::RemoteFaceMask>& masks);
+void NoteRemoteNpcBasePlacement(RE::TESForm* base);
 
 RE::TESNPC* EvaluateLeveledNpc(IVM* vm, StackID stackId,
                                RE::StaticFunctionTag*,

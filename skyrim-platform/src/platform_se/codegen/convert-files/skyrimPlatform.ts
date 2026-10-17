@@ -16,6 +16,7 @@ export declare function getPluginSourceCode(pluginName: string, overrideFolder?:
 export declare function writePlugin(pluginName: string, newSources: string, overrideFolder?: string): string // overrideFolder is relative to Data/Platform
 export declare function getPlatformVersion(): string
 export declare function disableCtrlPrtScnHotkey(): void
+export declare function configureRemoteNpcTintLayers(baseFormId: number, masks: Array<{texturePath: string; argb: number; type: number}>): {version: number; configured: boolean; layerCount: number; matchedCount: number; missingCount: number; reason: string}
 export declare function setHdnMagicMenuBlocked(blocked: boolean): void
 export interface HdnVanillaMenuPolicyState {
   policyVersion: number

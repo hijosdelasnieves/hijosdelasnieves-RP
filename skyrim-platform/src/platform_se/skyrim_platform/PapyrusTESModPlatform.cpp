@@ -31,6 +31,39 @@ struct
 } share2;
 
 namespace {
+struct RemoteAppearanceBase
+{
+  // All pointed-to memory belongs to the game/TESNPC, never to this registry.
+  RE::TESNPC* npc = nullptr;
+  RE::BSTArray<RE::TESNPC::Layer*>* layers = nullptr;
+  std::vector<Hdn::RemoteFaceMask> signature;
+  TESModPlatform::RemoteNpcTintLayerResult result;
+  RE::FormID raceId = 0;
+  std::uint32_t sex = 0;
+  bool placementStarted = false;
+};
+std::unordered_map<RE::FormID, RemoteAppearanceBase> g_remoteAppearanceBases;
+std::recursive_mutex g_remoteAppearanceMutex;
+
+bool RemoteFaceRuntimeSupported()
+{
+  return REL::Module::IsAE() &&
+    REL::Module::get().version() == REL::Version(1, 6, 1170, 0);
+}
+
+bool HasConfiguredRemoteFace(RE::Actor* actor)
+{
+  if (!actor || actor->GetFormID() < 0xff000000) return false;
+  auto* npc = actor->GetActorBase();
+  if (!npc || npc->GetFormID() < 0xff000000) return false;
+  std::lock_guard lock(g_remoteAppearanceMutex);
+  const auto found = g_remoteAppearanceBases.find(npc->GetFormID());
+  return found != g_remoteAppearanceBases.end() && found->second.npc == npc &&
+    found->second.result.configured && found->second.layers == npc->tintLayers;
+}
+}
+
+namespace {
 template <class T>
 [[nodiscard]] T* CreateForm()
 {
@@ -95,6 +128,26 @@ private:
     RE::BSTEventSource<RE::TESLoadGameEvent>* eventSource) override
   {
     vmCallAllowed = true;
+    return RE::BSEventNotifyControl::kContinue;
+  }
+};
+
+class RemoteAppearanceDeleteEvent : public RE::BSTEventSink<RE::TESFormDeleteEvent>
+{
+public:
+  RemoteAppearanceDeleteEvent()
+  {
+    if (auto* holder = RE::ScriptEventSourceHolder::GetSingleton()) holder->AddEventSink(this);
+  }
+private:
+  RE::BSEventNotifyControl ProcessEvent(const RE::TESFormDeleteEvent* event,
+    RE::BSTEventSource<RE::TESFormDeleteEvent>*) override
+  {
+    if (event && event->formID >= 0xff000000) {
+      std::lock_guard lock(g_remoteAppearanceMutex);
+      // Observers only. The engine owns the installed array and its layers.
+      g_remoteAppearanceBases.erase(event->formID);
+    }
     return RE::BSEventNotifyControl::kContinue;
   }
 };
@@ -300,8 +353,126 @@ RE::TESNPC* TESModPlatform::CreateNpc(IVM* vm, StackID stackId,
                                       RE::StaticFunctionTag*)
 {
   constexpr uint32_t kAADeleteWhenDoneTestJeremyRegular = 0x0010D13E;
-  return CloneNpc(kAADeleteWhenDoneTestJeremyRegular,
-                  AiPackagesMode::ReplaceWithDoNothing);
+  auto* npc = CloneNpc(kAADeleteWhenDoneTestJeremyRegular,
+                        AiPackagesMode::ReplaceWithDoNothing);
+  if (!npc || !RemoteFaceRuntimeSupported()) return npc;
+  if (!Hdn::IsolateRemoteAppearanceData(npc, []() {
+        return RE::calloc<RE::TESNPC::HeadRelatedData>(
+          1, sizeof(RE::TESNPC::HeadRelatedData));
+      })) return nullptr;
+  std::lock_guard lock(g_remoteAppearanceMutex);
+  RemoteAppearanceBase state;
+  state.npc = npc;
+  g_remoteAppearanceBases[npc->GetFormID()] = std::move(state);
+  return npc;
+}
+
+TESModPlatform::RemoteNpcTintLayerResult
+TESModPlatform::ConfigureRemoteNpcTintLayers(
+  std::uint32_t baseFormId, const std::vector<Hdn::RemoteFaceMask>& masks)
+{
+  RemoteNpcTintLayerResult rejected;
+  if (!RemoteFaceRuntimeSupported()) { rejected.reason = "unsupported-runtime"; return rejected; }
+  if (!g_nativeCallRequirements.vm) { rejected.reason = "not-game-update"; return rejected; }
+  if (baseFormId < 0xff000000 || baseFormId == 0xffffffff) {
+    rejected.reason = "not-dynamic-appearance-base"; return rejected;
+  }
+  if (masks.empty() || masks.size() > Hdn::kRemoteFaceMaxMasks) {
+    rejected.reason = "invalid-layer-count"; return rejected;
+  }
+  std::lock_guard lock(g_remoteAppearanceMutex);
+  auto found = g_remoteAppearanceBases.find(baseFormId);
+  auto* npc = RE::TESForm::LookupByID<RE::TESNPC>(baseFormId);
+  if (found == g_remoteAppearanceBases.end() || !npc || found->second.npc != npc) {
+    rejected.reason = "unregistered-appearance-base"; return rejected;
+  }
+  auto& state = found->second;
+  const auto sex = static_cast<std::uint32_t>(npc->GetSex());
+  auto* race = npc->race;
+  if (!race || sex >= 2) { rejected.reason = "missing-race-sex"; return rejected; }
+  if (state.result.configured) {
+    if (state.layers == npc->tintLayers && state.raceId == race->GetFormID() &&
+        state.sex == sex && state.signature == masks) return state.result;
+    rejected.reason = "immutable-base-already-configured"; return rejected;
+  }
+  if (state.placementStarted) { rejected.reason = "base-already-placed"; return rejected; }
+  if (npc->tintLayers) { rejected.reason = "appearance-layers-modified"; return rejected; }
+  const auto* face = race->faceRelatedData[sex];
+  const auto* assets = face ? face->tintMasks : nullptr;
+  if (!assets || assets->empty() || assets->size() > Hdn::kRemoteFaceMaxAssets) {
+    rejected.reason = "missing-race-tint-assets"; return rejected;
+  }
+  std::vector<Hdn::RemoteFaceAsset> definitions;
+  definitions.reserve(assets->size());
+  for (const auto* asset : *assets) {
+    if (!asset) continue;
+    Hdn::RemoteFaceAsset item;
+    item.type = static_cast<std::int32_t>(asset->texture.skinTone.get());
+    item.tintIndex = asset->texture.index;
+    const auto* path = asset->texture.file.textureName.c_str();
+    item.texturePath = path ? path : "";
+    const auto colors = asset->presets.colors.size();
+    const auto indices = asset->presets.indices.size();
+    for (std::uint32_t i = 0; i < colors && i < indices; ++i) {
+      if (const auto* color = asset->presets.colors[i]) {
+        const auto& rgb = color->color;
+        item.palette.emplace_back(asset->presets.indices[i],
+          (std::uint32_t(rgb.red) << 16) | (std::uint32_t(rgb.green) << 8) | rgb.blue);
+      }
+    }
+    definitions.push_back(std::move(item));
+  }
+  const auto plan = Hdn::PrepareRemoteFaceLayers(masks, definitions);
+  rejected.matchedCount = plan.matchedCount;
+  rejected.missingCount = plan.missingCount;
+  if (!plan.valid) { rejected.reason = plan.reason; return rejected; }
+  // Prepare the registry data before publishing engine-owned pointers. No
+  // allocation may throw after the NPC has received the immutable array.
+  auto signature = masks;
+  RemoteNpcTintLayerResult committed;
+  committed.configured = true;
+  committed.layerCount = plan.layers.size();
+  committed.matchedCount = plan.matchedCount;
+  committed.missingCount = plan.missingCount;
+  committed.reason = "configured";
+  using Array = RE::BSTArray<RE::TESNPC::Layer*>;
+  using Layer = RE::TESNPC::Layer;
+  const bool installed = Hdn::InstallImmutableRemoteLayers<RE::TESNPC, Array, Layer>(
+    npc, plan.layers,
+    []() -> Array* {
+      auto* memory = RE::malloc<Array>();
+      return memory ? ::new (memory) Array() : nullptr;
+    },
+    [](const Hdn::RemoteFaceLayer& recipe) -> Layer* {
+      auto* value = RE::calloc<Layer>(1, sizeof(Layer));
+      if (!value) return nullptr;
+      value->tintColor.red = static_cast<std::uint8_t>((recipe.argb >> 16) & 0xff);
+      value->tintColor.green = static_cast<std::uint8_t>((recipe.argb >> 8) & 0xff);
+      value->tintColor.blue = static_cast<std::uint8_t>(recipe.argb & 0xff);
+      value->tintColor.alpha = static_cast<std::uint8_t>((recipe.argb >> 24) & 0xff);
+      value->tintIndex = recipe.tintIndex;
+      value->preset = recipe.preset;
+      value->interpolationValue = recipe.interpolationValue;
+      return value;
+    },
+    [](Array* value) { value->~Array(); RE::free(value); },
+    [](Layer* value) { RE::free(value); });
+  if (!installed) { rejected.reason = "layer-allocation-failed"; return rejected; }
+  state.layers = npc->tintLayers;
+  state.raceId = race->GetFormID();
+  state.sex = sex;
+  state.signature = std::move(signature);
+  state.result = std::move(committed);
+  return state.result;
+}
+
+void TESModPlatform::NoteRemoteNpcBasePlacement(RE::TESForm* base)
+{
+  if (!base || base->GetFormType() != RE::FormType::NPC || base->GetFormID() < 0xff000000) return;
+  std::lock_guard lock(g_remoteAppearanceMutex);
+  const auto found = g_remoteAppearanceBases.find(base->GetFormID());
+  if (found != g_remoteAppearanceBases.end() && found->second.npc == base)
+    found->second.placementStarted = true;
 }
 
 RE::TESNPC* TESModPlatform::EvaluateLeveledNpc(
@@ -495,6 +666,7 @@ void TESModPlatform::ClearTintMasks(IVM* vm, StackID stackId,
                                     RE::StaticFunctionTag*,
                                     RE::Actor* targetActor)
 {
+  if (HasConfiguredRemoteFace(targetActor)) return;
   if (!targetActor) {
     auto pc = RE::PlayerCharacter::GetSingleton();
     return pc->GetTintList()->clear();
@@ -516,6 +688,7 @@ void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
                                   RE::Actor* targetActor, int32_t type,
                                   uint32_t argb, RE::BSFixedString texturePath)
 {
+  if (HasConfiguredRemoteFace(targetActor)) return;
   auto newTm = RE::malloc<::TintMask>();
   if (!newTm)
     return;
@@ -972,6 +1145,9 @@ uint64_t TESModPlatform::GetNumPapyrusUpdates()
 std::shared_ptr<RE::BSTArray<RE::TintMask*>> TESModPlatform::GetTintsFor(
   uint32_t actorId)
 {
+  if (actorId >= 0xff000000 &&
+      HasConfiguredRemoteFace(RE::TESForm::LookupByID<RE::Actor>(actorId)))
+    return nullptr;
   if (actorId < 0xff000000) {
     return nullptr;
   }
@@ -1139,6 +1315,7 @@ bool TESModPlatform::Register(IVM* vm)
       "CloseMenu", "TESModPlatform", CloseMenu));
 
   static LoadGameEvent loadGameEvent;
+  static RemoteAppearanceDeleteEvent remoteAppearanceDeleteEvent;
 
   return true;
 }
